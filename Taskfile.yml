@@ -1,0 +1,121 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: "3"
+
+vars:
+  COVERAGE_DIR: .coverage
+  COVERAGE_FILE: "{{.COVERAGE_DIR}}/coverage.out"
+  MIN_COVERAGE: "80"
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+    silent: true
+
+  # Testing
+  test:
+    desc: Run all tests with race detector
+    cmds:
+      - go test -race -v ./...
+
+  test:short:
+    desc: Run tests (quiet output)
+    cmds:
+      - go test -race ./...
+
+  # Coverage
+  cover:
+    desc: Run tests with coverage report
+    cmds:
+      - mkdir -p {{.COVERAGE_DIR}}
+      - go test -race -coverprofile={{.COVERAGE_FILE}} -covermode=atomic ./...
+      - go tool cover -func={{.COVERAGE_FILE}}
+
+  cover:html:
+    desc: Open HTML coverage report in browser
+    deps: [cover]
+    cmds:
+      - go tool cover -html={{.COVERAGE_FILE}} -o {{.COVERAGE_DIR}}/coverage.html
+      - xdg-open {{.COVERAGE_DIR}}/coverage.html 2>/dev/null || open {{.COVERAGE_DIR}}/coverage.html 2>/dev/null || echo "Open {{.COVERAGE_DIR}}/coverage.html in browser"
+
+  cover:check:
+    desc: Verify coverage meets minimum threshold ({{.MIN_COVERAGE}}%)
+    deps: [cover]
+    cmds:
+      - |
+        COVERAGE=$(go tool cover -func={{.COVERAGE_FILE}} | grep total | awk '{print $3}' | tr -d '%' | cut -d. -f1)
+        echo "Total coverage: ${COVERAGE}%"
+        if [ "$COVERAGE" -lt "{{.MIN_COVERAGE}}" ]; then
+          echo "FAIL: Coverage ${COVERAGE}% is below minimum {{.MIN_COVERAGE}}%"
+          exit 1
+        fi
+        echo "OK: Coverage meets minimum threshold"
+
+  cover:clean:
+    desc: Remove coverage artifacts
+    cmds:
+      - rm -rf {{.COVERAGE_DIR}}
+
+  # Code quality
+  fmt:
+    desc: Format code
+    cmds:
+      - gofmt -s -w .
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run ./...
+
+  lint:fix:
+    desc: Run golangci-lint with auto-fix
+    cmds:
+      - golangci-lint run --fix ./...
+
+  # Documentation
+  doc:
+    desc: Start local godoc server at http://localhost:6060
+    cmds:
+      - echo "Documentation at http://localhost:6060/pkg/github.com/thegrumpylion/xkb-go/"
+      - pkgsite -http=:6060 .
+
+  # Build
+  build:
+    desc: Build the package
+    cmds:
+      - go build ./...
+
+  clean:
+    desc: Clean all artifacts
+    cmds:
+      - go clean
+      - rm -rf {{.COVERAGE_DIR}}
+
+  # CI pipeline
+  ci:
+    desc: Run full CI pipeline (fmt, vet, test, coverage)
+    cmds:
+      - task: fmt
+      - task: vet
+      - task: test:short
+      - task: cover:check
+
+  # Development
+  watch:
+    desc: Watch for changes and run tests
+    cmds:
+      - |
+        echo "Watching for changes... (Ctrl+C to stop)"
+        while true; do
+          inotifywait -q -e modify,create,delete -r . --exclude '(\.git|\.coverage)' 2>/dev/null || sleep 2
+          clear
+          date
+          go test -race ./... 2>&1 | tail -20
+        done
