@@ -339,3 +339,53 @@ func BenchmarkKeymap_KeyGetName(b *testing.B) {
 		_ = km.KeyGetName(24)
 	}
 }
+
+// BenchmarkNewKeymapFromFile benchmarks loading keymap from file
+func BenchmarkNewKeymapFromFile(b *testing.B) {
+	ctx := NewContext(ContextNoFlags)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = ctx.NewKeymapFromFile("testdata/us_intl.xkb", KeymapFormatTextV1)
+	}
+}
+
+// BenchmarkNewKeymapFromNames benchmarks RMLVO compilation
+func BenchmarkNewKeymapFromNames(b *testing.B) {
+	ctx := NewContext(ContextNoFlags)
+
+	// Skip if system XKB data not available
+	_, err := ctx.NewKeymapFromNames(&RuleNames{Layout: "us"})
+	if err != nil {
+		b.Skip("System XKB data not available")
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = ctx.NewKeymapFromNames(&RuleNames{Layout: "us"})
+	}
+}
+
+// BenchmarkKeymap_GetAsString benchmarks keymap serialization
+func BenchmarkKeymap_GetAsString(b *testing.B) {
+	km := TestKeymap()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = km.GetAsString(KeymapFormatTextV1)
+	}
+}
+
+// BenchmarkKeymap_GetAsString_Large benchmarks serialization of a large keymap
+func BenchmarkKeymap_GetAsString_Large(b *testing.B) {
+	ctx := NewContext(ContextNoFlags)
+	km, err := ctx.NewKeymapFromFile("testdata/us_intl.xkb", KeymapFormatTextV1)
+	if err != nil {
+		b.Skip("testdata/us_intl.xkb not available")
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = km.GetAsString(KeymapFormatTextV1)
+	}
+}
