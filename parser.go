@@ -1365,9 +1365,10 @@ func (p *Parser) parseGroupName(keymap *Keymap) error {
 	return nil
 }
 
-// parseGroupIdent parses a group identifier like "Group1".
+// parseGroupIdent parses a group identifier like "Group1" or "group1".
 func (p *Parser) parseGroupIdent(name string) (int, error) {
-	if !strings.HasPrefix(name, "Group") {
+	lowerName := strings.ToLower(name)
+	if !strings.HasPrefix(lowerName, "group") {
 		return 0, fmt.Errorf("invalid group name: %s", name)
 	}
 	numStr := name[5:]

@@ -485,8 +485,13 @@ func TestParserGroupIdent(t *testing.T) {
 		{"Group1", 0, false},
 		{"Group2", 1, false},
 		{"Group4", 3, false},
+		{"group1", 0, false}, // lowercase variants (used by some keymaps)
+		{"group2", 1, false},
+		{"group4", 3, false},
+		{"GROUP1", 0, false}, // uppercase variants
 		{"Invalid", 0, true},
 		{"Groupx", 0, true},
+		{"groupx", 0, true},
 	}
 
 	for _, tt := range tests {
