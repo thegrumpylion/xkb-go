@@ -1,10 +1,6 @@
 # XKB-Go Architecture
 
-A pure Go implementation of the XKB (X Keyboard Extension) library, compatible with libxkbcommon.
-
 ## Overview
-
-XKB-Go provides keyboard handling for Wayland and X11 applications without requiring CGO or the libxkbcommon C library at runtime.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -68,7 +64,7 @@ Keys that modify the behavior of other keys.
 
 - Shift, Lock (Caps Lock), Control
 - Mod1 (usually Alt), Mod2 (usually Num Lock)
-- Mod3, Mod4 (usually Super/Win), Mod5 (usually ISO_Level3_Shift/AltGr)
+- Mod3, Mod4 (usually Super/Win), Mod5 (usually AltGr)
 
 **Virtual Modifiers** (user-defined, mapped to real):
 
@@ -76,12 +72,7 @@ Keys that modify the behavior of other keys.
 
 ### Groups (Layouts)
 
-Different keyboard layouts the user can switch between.
-
-- Group 1: English (US)
-- Group 2: Russian
-- Group 3: German
-- Group 4: (max 4 groups)
+Different keyboard layouts the user can switch between (max 4).
 
 ### Levels
 
@@ -108,90 +99,50 @@ type "ALPHABETIC" {
 
 ---
 
-## Layer 1: Context
+## Data Structures
 
-The top-level container holding configuration shared across keymaps.
+### Context
+
+Top-level container holding configuration shared across keymaps.
 
 ```go
 type Context struct {
-    mu           sync.RWMutex  // Thread-safe access
+    ctx          context.Context
+    mu           sync.RWMutex
     flags        ContextFlags
-    logger       *slog.Logger  // Standard library structured logging
+    logger       *slog.Logger
     includePaths []string
 }
 ```
 
-**Responsibilities:**
+### Keymap
 
-- Manage include paths for keymap file resolution
-- Provide logging infrastructure via `log/slog`
-- Factory for Keymap and ComposeTable objects
-- Thread-safe operations for concurrent access
-
-**Why separate from Keymap?**
-
-- Multiple keymaps can share the same context
-- Logging and include paths are environment-level concerns
-- Follows libxkbcommon's design for compatibility
-
----
-
-## Layer 2: Keymap (Immutable)
-
-The compiled keyboard configuration. Created once, never modified.
+Compiled keyboard configuration. Immutable after creation.
 
 ```go
 type Keymap struct {
     ctx *Context
 
-    // Keycode ↔ name mapping
     keycodeNames   map[Keycode]string
     keycodesByName map[string]Keycode
     minKeycode     Keycode
     maxKeycode     Keycode
 
-    // Key type definitions
     types     map[string]*KeyType
-    typesList []*KeyType
-
-    // Per-key information
-    keys map[Keycode]*Key
-
-    // Modifier definitions
-    modNames    [8]string           // Real modifier names
-    virtualMods map[string]ModMask  // Virtual → real mapping
-
-    // LED/indicator definitions
-    leds map[string]*LED
-
-    // Group names
+    keys      map[Keycode]*Key
+    modNames  [8]string
+    virtualMods map[string]ModMask
+    leds      map[string]*LED
     groupNames []string
     numGroups  int
 }
-```
-
-### Sub-structures
-
-```go
-type KeyType struct {
-    name      string
-    mods      ModMask              // Modifiers this type considers
-    numLevels int
-    entries   []KeyTypeEntry       // Modifier → level mapping
-}
-
-type KeyTypeEntry struct {
-    mods     ModMask
-    level    Level
-    preserve ModMask  // Modifiers to preserve (not consume)
-}
 
 type Key struct {
-    keycode   Keycode
-    name      string
-    groups    []KeyGroup
-    repeats   bool
-    vmodmap   ModMask  // Virtual modifiers this key sets
+    keycode Keycode
+    name    string
+    groups  []KeyGroup
+    repeats bool
+    vmodmap ModMask
 }
 
 type KeyGroup struct {
@@ -200,101 +151,54 @@ type KeyGroup struct {
 }
 
 type KeyLevel struct {
-    syms []Keysym  // Usually 1, rarely more
+    syms []Keysym
 }
 ```
 
----
+### State
 
-## Layer 3: Keymap Parser
-
-Parses XKB text format into a Keymap structure.
-
-### XKB Text Format
-
-A complete keymap has 4-5 sections:
-
-```
-xkb_keymap {
-    xkb_keycodes "name" { ... };
-    xkb_types "name" { ... };
-    xkb_compat "name" { ... };
-    xkb_symbols "name" { ... };
-    xkb_geometry "name" { ... };  // Ignored
-};
-```
-
-### Parser Architecture
-
-```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│    Lexer     │────▶│    Parser    │────▶│   Keymap     │
-│  (Tokenize)  │     │   (Grammar)  │     │  (Compiled)  │
-└──────────────┘     └──────────────┘     └──────────────┘
-       │                    │
-       ▼                    ▼
-  Token Stream         AST Nodes
-```
-
-**Lexer tokens:**
-
-- Keywords: `xkb_keymap`, `xkb_keycodes`, `type`, `key`, `include`, etc.
-- Identifiers: `TLDE`, `TWO_LEVEL`, `Shift`, etc.
-- Strings: `"us"`, `"basic"`
-- Numbers: `49`, `0xff0d`, `0x01000041`
-- Operators: `=`, `+`, `[`, `]`, `{`, `}`, `;`, etc.
-
-**Parser complexity:**
-
-- Include resolution with merge modes
-- Virtual modifier declaration and resolution
-- Action parsing for xkb_compat
-- Key type and symbol binding
-
----
-
-## Layer 4: State (Mutable)
-
-Tracks the current keyboard state for key translation.
+Tracks current keyboard state for key translation.
 
 ```go
 type State struct {
     keymap *Keymap
 
-    // Modifier state (three components)
-    baseMods    ModMask  // Currently pressed
-    latchedMods ModMask  // One-shot (sticky keys)
-    lockedMods  ModMask  // Toggled (Caps Lock)
+    // Modifier state
+    baseMods    ModMask
+    latchedMods ModMask
+    lockedMods  ModMask
 
-    // Group state (three components)
+    // Group state
     baseGroup    Group
     latchedGroup Group
     lockedGroup  Group
 
     // Cached effective values
-    effectiveMods ModMask
+    effectiveMods  ModMask
     effectiveGroup Group
 }
 ```
 
-### State Update Methods
+### Compose
 
-**From Wayland/X11 (server sends modifier state):**
-
-```go
-func (s *State) UpdateMask(
-    baseMods, latchedMods, lockedMods ModMask,
-    baseGroup, latchedGroup, lockedGroup Group,
-) StateComponent
-```
-
-**From evdev (manual key tracking):**
+Handles multi-key sequences (dead keys).
 
 ```go
-func (s *State) UpdateKey(keycode Keycode, direction KeyDirection) StateComponent
+type ComposeTable struct {
+    locale string
+    root   *composeNode  // Trie structure
+}
+
+type ComposeState struct {
+    table   *ComposeTable
+    current *composeNode
+    status  ComposeStatus
+}
 ```
 
-### Key Translation Algorithm
+---
+
+## Key Translation Algorithm
 
 ```
 func (s *State) KeyGetSyms(keycode Keycode) []Keysym:
@@ -309,223 +213,48 @@ func (s *State) KeyGetSyms(keycode Keycode) []Keysym:
 
 ---
 
-## Layer 5: Compose (Dead Keys)
-
-Handles multi-key sequences that produce single characters.
-
-### Compose Table
-
-```go
-type ComposeTable struct {
-    locale string
-    root   *composeNode
-}
-
-type composeNode struct {
-    children map[Keysym]*composeNode
-    result   *composeResult  // nil if not terminal
-}
-
-type composeResult struct {
-    keysym Keysym
-    utf8   string
-}
-```
-
-### Compose State Machine
-
-```go
-type ComposeState struct {
-    table   *ComposeTable
-    current *composeNode
-    status  ComposeStatus
-}
-
-type ComposeStatus int
-const (
-    ComposeNothing   ComposeStatus = iota  // No sequence in progress
-    ComposeComposing                        // Sequence in progress
-    ComposeComposed                         // Sequence complete
-    ComposeCancelled                        // Sequence aborted
-)
-```
-
-### Compose File Format
-
-From `/usr/share/X11/locale/en_US.UTF-8/Compose`:
-
-```
-<dead_acute> <a>         : "á"   aacute
-<dead_acute> <A>         : "Á"   Aacute
-<Multi_key> <a> <e>      : "æ"   ae
-<Multi_key> <c> <o> <p> <y> : "©" copyright
-```
-
----
-
-## Layer 6: RMLVO Compilation
-
-Build keymaps from rules files and RMLVO names.
-
-```go
-type RuleNames struct {
-    Rules   string  // e.g., "evdev"
-    Model   string  // e.g., "pc105"
-    Layout  string  // e.g., "us"
-    Variant string  // e.g., "intl"
-    Options string  // e.g., "ctrl:nocaps"
-}
-```
-
-### Compilation Flow
-
-```
-RuleNames → Rules File Parser → KcCGST → Component Loader → Keymap String → Parser
-```
-
-1. Parse rules file (e.g., `/usr/share/X11/xkb/rules/evdev`)
-2. Resolve RMLVO to component specifiers (keycodes, types, compat, symbols)
-3. Load component files from include paths
-4. Resolve `include` and `augment` directives recursively
-5. Extract and merge sections into complete keymap
-6. Parse assembled keymap with standard parser
-
----
-
-## Layer 7: Keysym Utilities
-
-Static functions and tables for keysym handling.
-
-```go
-// Conversion
-func KeysymToUTF32(keysym Keysym) rune
-func UTF32ToKeysym(r rune) Keysym
-func KeysymToUTF8(keysym Keysym) string
-
-// Naming
-func KeysymGetName(keysym Keysym) string
-func KeysymFromName(name string, flags KeysymFlags) Keysym
-
-// Classification
-func KeysymIsModifier(keysym Keysym) bool
-func KeysymIsKeypad(keysym Keysym) bool
-```
-
-### Keysym Tables
-
-Generated from X11 keysym headers (~2500 entries):
-
-```go
-var keysymNames = map[Keysym]string{
-    0x0020: "space",
-    0x0041: "A",
-    0x0061: "a",
-    0xff08: "BackSpace",
-    0xff09: "Tab",
-    0xff0d: "Return",
-    0xff1b: "Escape",
-    0xffe1: "Shift_L",
-    0xffe2: "Shift_R",
-    // ... ~2500 more
-}
-
-var keysymsByName = map[string]Keysym{
-    // Inverse of above
-}
-
-// Unicode keysyms: 0x01000000 + codepoint
-func KeysymToUTF32(ks Keysym) rune {
-    if ks >= 0x01000000 && ks <= 0x0110ffff {
-        return rune(ks - 0x01000000)
-    }
-    // Lookup in table for legacy keysyms
-    return keysymToUnicode[ks]
-}
-```
-
----
-
-## Package Structure
-
-Flat package structure for simplicity (no circular imports, all types accessible):
-
-```
-github.com/thegrumpylion/xkb-go/
-├── context.go         # Context, include paths, factory methods
-├── keymap.go          # Keymap struct and query/serialization methods
-├── state.go           # State struct and methods
-├── compose.go         # ComposeTable and ComposeState
-├── compose_parser.go  # Compose file format parser
-├── types.go           # Core types (Keysym, Keycode, ModMask, etc.)
-├── keysym.go          # Keysym utilities and tables
-├── lexer.go           # XKB text format tokenizer
-├── parser.go          # XKB keymap grammar parser
-├── rules.go           # RMLVO compilation (NewKeymapFromNames)
-├── errors.go          # Error types with source locations
-├── testing.go         # Test helpers (TestKeymap, TestComposeTable)
-└── docs/
-    ├── architecture.md
-    ├── parser.md
-    ├── roadmap.md
-    ├── decisions.md
-    └── references.md
-```
-
----
-
-## Data Flow: Complete Example
+## Data Flow Example
 
 ```
 User presses 'Q' key with Shift held on US keyboard:
 
-1. Hardware
-   └─▶ Scancode: 16
+1. Hardware → Scancode: 16
 
-2. evdev (Linux input)
-   └─▶ Keycode: 24 (scancode + 8)
+2. evdev (Linux) → Keycode: 24 (scancode + 8)
 
-3. Wayland compositor
-   └─▶ wl_keyboard.key(serial, time, key=24, state=pressed)
-   └─▶ wl_keyboard.modifiers(depressed=Shift, latched=0, locked=0, group=0)
+3. Wayland compositor sends:
+   - wl_keyboard.key(key=24, state=pressed)
+   - wl_keyboard.modifiers(depressed=Shift, ...)
 
 4. Application: state.UpdateMask(Shift, 0, 0, 0, 0, 0)
-   └─▶ effectiveMods = Shift
-   └─▶ effectiveGroup = 0
 
 5. Application: state.KeyGetOneSym(24)
-   a. key = keymap.keys[24]  // Key "AD01"
-   b. group = 0 % 1 = 0
-   c. keyType = "ALPHABETIC"
-   d. maskedMods = Shift & (Shift|Lock) = Shift
-   e. level = typeEntries[Shift] = Level2
-   f. return key.groups[0].levels[1].syms[0]
-   └─▶ Keysym: 0x0051 (Q)
+   - key = keymap.keys[24]  // Key "AD01"
+   - keyType = "ALPHABETIC"
+   - maskedMods = Shift & (Shift|Lock) = Shift
+   - level = Level2
+   → Keysym: 0x0051 (Q)
 
-6. Application: composeState.Feed(0x0051)
-   └─▶ Status: ComposeNothing (Q doesn't start sequence)
-
-7. Application: KeysymToUTF32(0x0051)
-   └─▶ 'Q' (rune 0x51)
-
-8. Application: insert 'Q' into text field
+6. Application: KeysymToUTF32(0x0051)
+   → 'Q' (rune 0x51)
 ```
 
 ---
 
-## Compatibility with libxkbcommon
+## RMLVO Compilation
 
-This implementation aims for API compatibility where practical:
+Build keymaps from rules files (RMLVO = Rules, Model, Layout, Variant, Options).
 
-| libxkbcommon | xkb-go |
-|--------------|--------|
-| `xkb_context_new()` | `xkb.NewContext(ctx, flags)` |
-| `xkb_keymap_new_from_string()` | `ctx.NewKeymapFromString()` |
-| `xkb_state_new()` | `keymap.NewState()` |
-| `xkb_state_key_get_one_sym()` | `state.KeyGetOneSym()` |
-| `xkb_state_key_get_utf32()` | `state.KeyGetUTF32()` |
-| `xkb_state_update_mask()` | `state.UpdateMask()` |
-| `xkb_compose_table_new_from_locale()` | `ctx.NewComposeTableFromLocale()` |
-| `xkb_compose_state_feed()` | `composeState.Feed()` |
+```
+RuleNames → Rules Parser → KcCGST → Component Loader → Keymap String → Parser
+```
+
+1. Parse rules file (e.g., `/usr/share/X11/xkb/rules/evdev`)
+2. Resolve RMLVO to component specifiers
+3. Load component files from include paths
+4. Resolve `include` and `augment` directives
+5. Assemble complete keymap string
+6. Parse with standard parser
 
 ---
 
