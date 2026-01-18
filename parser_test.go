@@ -991,3 +991,333 @@ func TestParserRealKeymap(t *testing.T) {
 
 	t.Log("Real keymap test passed!")
 }
+
+func TestParserEdgeCases(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{
+			"minimal valid",
+			`xkb_keymap { xkb_keycodes "a" { minimum=8; maximum=255; }; xkb_types "a" {}; xkb_compat "a" {}; xkb_symbols "a" {}; };`,
+			false,
+		},
+		{
+			"empty sections",
+			`xkb_keymap { xkb_keycodes "" { }; xkb_types "" {}; xkb_compat "" {}; xkb_symbols "" {}; };`,
+			false,
+		},
+		{
+			"min equals max",
+			`xkb_keymap { xkb_keycodes "a" { minimum=8; maximum=8; }; xkb_types "a" {}; xkb_compat "a" {}; xkb_symbols "a" {}; };`,
+			false,
+		},
+		{
+			"min greater than max",
+			`xkb_keymap { xkb_keycodes "a" { minimum=255; maximum=8; }; xkb_types "a" {}; xkb_compat "a" {}; xkb_symbols "a" {}; };`,
+			false,
+		},
+		{
+			"zero keycodes",
+			`xkb_keymap { xkb_keycodes "a" { minimum=0; maximum=0; }; xkb_types "a" {}; xkb_compat "a" {}; xkb_symbols "a" {}; };`,
+			false,
+		},
+		{
+			"very large keycode",
+			`xkb_keymap { xkb_keycodes "a" { minimum=0; maximum=65535; <MAX> = 65535; }; xkb_types "a" {}; xkb_compat "a" {}; xkb_symbols "a" {}; };`,
+			false,
+		},
+		{
+			"duplicate keycode name",
+			`xkb_keymap { xkb_keycodes "a" { minimum=8; maximum=255; <DUP> = 10; <DUP> = 11; }; xkb_types "a" {}; xkb_compat "a" {}; xkb_symbols "a" {}; };`,
+			false,
+		},
+		{
+			"type with many levels",
+			`xkb_keymap {
+				xkb_keycodes "a" { minimum=8; maximum=255; };
+				xkb_types "a" {
+					type "EIGHT" {
+						modifiers = Shift+Lock+Control+Mod1+Mod2+Mod3+Mod4+Mod5;
+						map[Shift] = Level2;
+						map[Lock] = Level3;
+						map[Control] = Level4;
+						map[Mod1] = Level5;
+						map[Mod2] = Level6;
+						map[Mod3] = Level7;
+						map[Mod4] = Level8;
+					};
+				};
+				xkb_compat "a" {};
+				xkb_symbols "a" {};
+			};`,
+			false,
+		},
+		{
+			"key with many symbols",
+			`xkb_keymap {
+				xkb_keycodes "a" { minimum=8; maximum=255; <K> = 10; };
+				xkb_types "a" {
+					type "ONE_LEVEL" { modifiers = none; };
+					type "EIGHT_LEVEL" {
+						modifiers = Shift+Lock+Control;
+						map[Shift] = Level2;
+						map[Lock] = Level3;
+						map[Control] = Level4;
+						map[Shift+Lock] = Level5;
+						map[Shift+Control] = Level6;
+						map[Lock+Control] = Level7;
+						map[Shift+Lock+Control] = Level8;
+					};
+				};
+				xkb_compat "a" {};
+				xkb_symbols "a" {
+					key <K> { type = "EIGHT_LEVEL", [ a, b, c, d, e, f, g, h ] };
+				};
+			};`,
+			false,
+		},
+		{
+			"multiple groups",
+			`xkb_keymap {
+				xkb_keycodes "a" { minimum=8; maximum=255; <K> = 10; };
+				xkb_types "a" { type "ONE_LEVEL" { modifiers = none; }; };
+				xkb_compat "a" {};
+				xkb_symbols "a" {
+					name[Group1] = "English";
+					name[Group2] = "Russian";
+					key <K> {
+						symbols[Group1] = [ a ],
+						symbols[Group2] = [ Cyrillic_a ]
+					};
+				};
+			};`,
+			false,
+		},
+		{
+			"virtual modifier chain",
+			`xkb_keymap {
+				xkb_keycodes "a" { minimum=8; maximum=255; };
+				xkb_types "a" { virtual_modifiers A, B, C, D, E, F, G, H; };
+				xkb_compat "a" {};
+				xkb_symbols "a" {};
+			};`,
+			false,
+		},
+		{
+			"indicator with all options",
+			`xkb_keymap {
+				xkb_keycodes "a" { minimum=8; maximum=255; indicator 1 = "Test"; };
+				xkb_types "a" {};
+				xkb_compat "a" {
+					indicator "Test" {
+						modifiers = Shift+Lock;
+						groups = Group1+Group2;
+					};
+				};
+				xkb_symbols "a" {};
+			};`,
+			false,
+		},
+		{
+			"action in interpret",
+			`xkb_keymap {
+				xkb_keycodes "a" { minimum=8; maximum=255; };
+				xkb_types "a" {};
+				xkb_compat "a" {
+					interpret Shift_L {
+						action = SetMods(modifiers=Shift, clearLocks);
+					};
+					interpret Control_L {
+						action = LockMods(modifiers=Control);
+					};
+				};
+				xkb_symbols "a" {};
+			};`,
+			false,
+		},
+		{
+			"no closing brace",
+			`xkb_keymap { xkb_keycodes "a" { minimum=8; maximum=255;`,
+			true,
+		},
+		{
+			"duplicate keycodes section",
+			`xkb_keymap {
+				xkb_keycodes "a" { minimum=8; maximum=255; };
+				xkb_keycodes "b" { minimum=8; maximum=255; };
+				xkb_types "a" {};
+				xkb_compat "a" {};
+				xkb_symbols "a" {};
+			};`,
+			true,
+		},
+		{
+			"duplicate types section",
+			`xkb_keymap {
+				xkb_keycodes "a" { minimum=8; maximum=255; };
+				xkb_types "a" {};
+				xkb_types "b" {};
+				xkb_compat "a" {};
+				xkb_symbols "a" {};
+			};`,
+			true,
+		},
+		{
+			"wrong section order",
+			`xkb_keymap { xkb_symbols "a" {}; xkb_keycodes "a" { minimum=8; maximum=255; }; xkb_types "a" {}; xkb_compat "a" {}; };`,
+			false,
+		},
+		{
+			"missing required section",
+			`xkb_keymap { xkb_keycodes "a" { minimum=8; maximum=255; }; xkb_types "a" {}; };`,
+			true,
+		},
+		{
+			"geometry section",
+			`xkb_keymap {
+				xkb_keycodes "a" { minimum=8; maximum=255; };
+				xkb_types "a" {};
+				xkb_compat "a" {};
+				xkb_symbols "a" {};
+				xkb_geometry "test" {
+					width = 470;
+					height = 180;
+				};
+			};`,
+			false,
+		},
+		{
+			"preserve in type",
+			`xkb_keymap {
+				xkb_keycodes "a" { minimum=8; maximum=255; };
+				xkb_types "a" {
+					type "PRESERVE" {
+						modifiers = Shift+Control;
+						map[Shift] = Level2;
+						preserve[Shift] = Shift;
+					};
+				};
+				xkb_compat "a" {};
+				xkb_symbols "a" {};
+			};`,
+			false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := NewParser([]byte(tt.input))
+			keymap, err := p.Parse()
+			if tt.wantErr {
+				if err == nil {
+					t.Error("Expected error, got nil")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Unexpected error: %v", err)
+				}
+				if keymap == nil && err == nil {
+					t.Error("Got nil keymap without error")
+				}
+			}
+		})
+	}
+}
+
+func TestKeyTypeEdgeCases(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{
+			"level name variations",
+			`xkb_keymap {
+				xkb_keycodes "a" { minimum=8; maximum=255; };
+				xkb_types "a" {
+					type "TEST" {
+						modifiers = Shift;
+						map[Shift] = Level2;
+						level_name[Level1] = "Base";
+						level_name[Level2] = "";
+					};
+				};
+				xkb_compat "a" {};
+				xkb_symbols "a" {};
+			};`,
+		},
+		{
+			"none modifier",
+			`xkb_keymap {
+				xkb_keycodes "a" { minimum=8; maximum=255; };
+				xkb_types "a" {
+					type "NONE" {
+						modifiers = none;
+					};
+				};
+				xkb_compat "a" {};
+				xkb_symbols "a" {};
+			};`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := NewParser([]byte(tt.input))
+			keymap, err := p.Parse()
+			if err != nil {
+				t.Fatalf("Parse failed: %v", err)
+			}
+			if keymap == nil {
+				t.Fatal("Keymap is nil")
+			}
+		})
+	}
+}
+
+func TestModifierMapEdgeCases(t *testing.T) {
+	input := `xkb_keymap {
+		xkb_keycodes "a" {
+			minimum = 8;
+			maximum = 255;
+			<K1> = 10;
+			<K2> = 11;
+			<K3> = 12;
+		};
+		xkb_types "a" {
+			type "ONE_LEVEL" { modifiers = none; };
+		};
+		xkb_compat "a" {};
+		xkb_symbols "a" {
+			key <K1> { [ a ] };
+			key <K2> { [ b ] };
+			key <K3> { [ c ] };
+			modifier_map Shift { <K1> };
+			modifier_map Control { <K2> };
+			modifier_map Mod1 { <K3> };
+		};
+	};`
+
+	p := NewParser([]byte(input))
+	keymap, err := p.Parse()
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	if key := keymap.keys[10]; key != nil {
+		if key.vmodmap&ModShift == 0 {
+			t.Error("Key 10 should have Shift modifier")
+		}
+	}
+	if key := keymap.keys[11]; key != nil {
+		if key.vmodmap&ModControl == 0 {
+			t.Error("Key 11 should have Control modifier")
+		}
+	}
+	if key := keymap.keys[12]; key != nil {
+		if key.vmodmap&ModMod1 == 0 {
+			t.Error("Key 12 should have Mod1 modifier")
+		}
+	}
+}

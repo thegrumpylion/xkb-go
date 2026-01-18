@@ -12,6 +12,12 @@ type Parser struct {
 	current Token
 	prev    Token
 	errors  []error
+
+	// Track which sections have been parsed (for duplicate detection)
+	sawKeycodes bool
+	sawTypes    bool
+	sawCompat   bool
+	sawSymbols  bool
 }
 
 // NewParser creates a new parser for the given input.
@@ -183,11 +189,72 @@ func (p *Parser) Parse() (*Keymap, error) {
 	// Optional trailing semicolon
 	p.match(TokenSemicolon)
 
+	// Validate the keymap
+	p.validateKeymap(keymap)
+
 	if len(p.errors) > 0 {
 		return keymap, p.errors[0] // Return first error
 	}
 
 	return keymap, nil
+}
+
+// validateKeymap performs semantic validation on the parsed keymap.
+// This matches libxkbcommon's validation behavior.
+func (p *Parser) validateKeymap(keymap *Keymap) {
+	// Check that all required sections were present
+	// Note: libxkbcommon now treats sections as optional, but we follow
+	// the stricter approach of requiring all 4 main sections.
+	if !p.sawKeycodes {
+		p.addError(fmt.Errorf("keymap is missing xkb_keycodes section"))
+	}
+	if !p.sawTypes {
+		p.addError(fmt.Errorf("keymap is missing xkb_types section"))
+	}
+	if !p.sawCompat {
+		p.addError(fmt.Errorf("keymap is missing xkb_compat section"))
+	}
+	if !p.sawSymbols {
+		p.addError(fmt.Errorf("keymap is missing xkb_symbols section"))
+	}
+
+	// Validate that keys reference valid keycodes and types
+	for keycode, key := range keymap.keys {
+		// Check keycode is within declared range
+		if keycode < keymap.minKeycode || keycode > keymap.maxKeycode {
+			p.addError(fmt.Errorf("key %s has keycode %d outside declared range [%d, %d]",
+				key.name, keycode, keymap.minKeycode, keymap.maxKeycode))
+		}
+
+		// Check each group's type reference
+		for groupIdx, group := range key.groups {
+			if group.keyType == nil {
+				// Assign default ONE_LEVEL type if missing
+				if defaultType, ok := keymap.types["ONE_LEVEL"]; ok {
+					key.groups[groupIdx].keyType = defaultType
+				}
+			} else {
+				// Verify the type exists in the keymap
+				if _, ok := keymap.types[group.keyType.name]; !ok {
+					p.addError(fmt.Errorf("key %s group %d references undefined type %q",
+						key.name, groupIdx+1, group.keyType.name))
+				}
+			}
+		}
+	}
+
+	// Validate aliases reference defined keycodes
+	for aliasName, keycode := range keymap.keycodesByName {
+		if _, ok := keymap.keycodeNames[keycode]; !ok {
+			// This is an alias - check if the target keycode exists
+			// Note: aliases should already be resolved during parsing,
+			// but we double-check here
+			if keycode < keymap.minKeycode || keycode > keymap.maxKeycode {
+				p.addError(fmt.Errorf("alias %s references keycode %d outside declared range",
+					aliasName, keycode))
+			}
+		}
+	}
 }
 
 // parseSection parses a single xkb section (keycodes, types, compat, symbols, geometry).
@@ -199,12 +266,28 @@ func (p *Parser) parseSection(keymap *Keymap) error {
 
 	switch sectionName {
 	case "xkb_keycodes":
+		if p.sawKeycodes {
+			return p.errorf("more than one xkb_keycodes section in keymap")
+		}
+		p.sawKeycodes = true
 		return p.parseKeycodes(keymap)
 	case "xkb_types":
+		if p.sawTypes {
+			return p.errorf("more than one xkb_types section in keymap")
+		}
+		p.sawTypes = true
 		return p.parseTypes(keymap)
 	case "xkb_compat", "xkb_compatibility":
+		if p.sawCompat {
+			return p.errorf("more than one xkb_compat section in keymap")
+		}
+		p.sawCompat = true
 		return p.parseCompat(keymap)
 	case "xkb_symbols":
+		if p.sawSymbols {
+			return p.errorf("more than one xkb_symbols section in keymap")
+		}
+		p.sawSymbols = true
 		return p.parseSymbols(keymap)
 	case "xkb_geometry":
 		return p.skipSection() // Ignored

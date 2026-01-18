@@ -270,3 +270,55 @@ func TestStateUpdateKey(t *testing.T) {
 	changed := state.UpdateKey(38, KeyPressed)
 	_ = changed // Currently returns 0
 }
+
+func TestStateEdgeCases(t *testing.T) {
+	km := TestKeymap()
+	state := km.NewState()
+
+	t.Run("all modifiers combined", func(t *testing.T) {
+		allMods := ModShift | ModLock | ModControl | ModMod1 | ModMod2 | ModMod3 | ModMod4 | ModMod5
+		state.UpdateMask(allMods, allMods, allMods, 0, 0, 0)
+		effective := state.SerializeMods(StateModEffective)
+		if effective != allMods {
+			t.Errorf("Effective mods = %d, want %d", effective, allMods)
+		}
+	})
+
+	t.Run("group wraparound", func(t *testing.T) {
+		for g := Group(0); g < 10; g++ {
+			state.UpdateMask(0, 0, 0, g, 0, 0)
+			effective := state.SerializeGroup(StateGroupEffective)
+			if effective != 0 {
+				t.Errorf("Group %d wrapped to %d, want 0", g, effective)
+			}
+		}
+	})
+
+	t.Run("keycode boundaries", func(t *testing.T) {
+		keycodes := []Keycode{
+			0,
+			8,
+			255,
+			256,
+			0xFFFFFFFF,
+		}
+
+		for _, kc := range keycodes {
+			// Should not panic
+			_ = state.KeyGetOneSym(kc)
+			_ = state.KeyGetSyms(kc)
+			_ = state.KeyGetUTF32(kc)
+			_ = state.KeyGetUTF8(kc)
+		}
+	})
+
+	t.Run("repeated updates", func(t *testing.T) {
+		for i := 0; i < 1000; i++ {
+			if i%2 == 0 {
+				state.UpdateMask(ModShift, 0, 0, 0, 0, 0)
+			} else {
+				state.UpdateMask(0, 0, 0, 0, 0, 0)
+			}
+		}
+	})
+}

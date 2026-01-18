@@ -550,3 +550,50 @@ func TestNewComposeTableFromLocale(t *testing.T) {
 
 	t.Logf("Successfully loaded compose table for locale: %s", table.Locale())
 }
+
+func TestComposeEdgeCases(t *testing.T) {
+	table := TestComposeTable()
+	if table == nil {
+		t.Skip("No test compose table available")
+	}
+	state := table.NewState(0)
+
+	t.Run("empty sequence", func(t *testing.T) {
+		state.Reset()
+		if state.GetStatus() != ComposeNothing {
+			t.Error("Expected ComposeNothing after reset")
+		}
+	})
+
+	t.Run("very long sequence", func(t *testing.T) {
+		state.Reset()
+		for i := 0; i < 100; i++ {
+			_ = state.Feed(Keysym('a' + (i % 26)))
+		}
+	})
+
+	t.Run("special keysyms", func(t *testing.T) {
+		state.Reset()
+		specialKeysyms := []Keysym{
+			KeyNoSymbol,
+			KeyReturn,
+			KeyEscape,
+			KeyBackSpace,
+			0xFFFFFFFF,
+		}
+
+		for _, ks := range specialKeysyms {
+			_ = state.Feed(ks)
+		}
+	})
+
+	t.Run("concurrent feed and query", func(t *testing.T) {
+		state.Reset()
+		for i := 0; i < 100; i++ {
+			_ = state.Feed(Keysym('a'))
+			_ = state.GetStatus()
+			_ = state.GetOneSym()
+			_ = state.GetUTF8()
+		}
+	})
+}

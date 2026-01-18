@@ -1,6 +1,7 @@
 package xkb
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -842,5 +843,53 @@ func TestLexerBackupZeroWidth(t *testing.T) {
 	r = lexer.next()
 	if r != -1 {
 		t.Errorf("after backup: next() = %q, want EOF", r)
+	}
+}
+
+func TestLexerEdgeCases(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"empty input", ""},
+		{"only whitespace", "   \t\n\r   "},
+		{"only comments", "// comment\n/* block */"},
+		{"deeply nested braces", "{{{{{{}}}}}}"},
+		{"many semicolons", ";;;;;;;"},
+		{"mixed operators", "=+[]{}();,"},
+		{"long identifier", strings.Repeat("a", 1000)},
+		{"long string", `"` + strings.Repeat("x", 1000) + `"`},
+		{"string with all escapes", `"\n\t\r\\\"\000\xff"`},
+		{"invalid escape", `"\z"`},
+		{"unterminated string", `"unterminated`},
+		{"unterminated block comment", "/* never closed"},
+		{"keycode at end", "<ABC"},
+		{"keycode variations", "<A> <AB> <ABC> <ABCD> <AB01>"},
+		{"numbers", "0 1 255 0x0 0xff 0xFF 0777 00"},
+		{"hex upper lower", "0xABCDEF 0xabcdef"},
+		{"large hex number", "0xFFFFFFFF"},
+		{"negative looking", "-1"},
+		{"special chars in string", `"\x00\x01\x1f"`},
+		{"unicode in input", "// 日本語コメント"},
+		{"consecutive strings", `"a""b""c"`},
+		{"newline in weird places", "key\n<\nAD01\n>\n{\n}\n;"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lexer := NewLexer([]byte(tt.input))
+			// Should not panic, collect all tokens
+			var tokens []Token
+			for {
+				tok := lexer.NextToken()
+				tokens = append(tokens, tok)
+				if tok.Type == TokenEOF || tok.Type == TokenError {
+					break
+				}
+				if len(tokens) > 10000 {
+					t.Fatal("Too many tokens, possible infinite loop")
+				}
+			}
+		})
 	}
 }

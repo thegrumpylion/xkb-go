@@ -1,6 +1,9 @@
 package xkb
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestKeysymToUTF32(t *testing.T) {
 	tests := []struct {
@@ -270,4 +273,79 @@ func TestKeysymConstants(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestKeysymEdgeCases(t *testing.T) {
+	t.Run("boundary keysyms", func(t *testing.T) {
+		boundaries := []Keysym{
+			0,                     // NoSymbol
+			0x0020,                // space (lowest printable)
+			0x007e,                // tilde (highest ASCII printable)
+			0x007f,                // DEL (not printable)
+			0x00a0,                // NBSP (start of Latin-1 supplement)
+			0x00ff,                // ÿ (end of Latin-1)
+			0x0100,                // Start of Latin Extended
+			0xff08,                // BackSpace
+			0xffff,                // End of legacy keysyms
+			0x01000000,            // Start of Unicode keysyms
+			0x01000041,            // Unicode 'A'
+			0x0110ffff,            // End of valid Unicode keysyms
+			0x01110000,            // Invalid (beyond Unicode)
+			0xffffffff,            // Max uint32
+		}
+
+		for _, ks := range boundaries {
+			// Should not panic
+			name := KeysymGetName(ks)
+			utf32 := KeysymToUTF32(ks)
+			utf8 := KeysymToUTF8(ks)
+			_ = name
+			_ = utf32
+			_ = utf8
+		}
+	})
+
+	t.Run("unicode keysym range", func(t *testing.T) {
+		tests := []struct {
+			keysym Keysym
+			want   rune
+		}{
+			{0x01000041, 'A'},
+			{0x010000e4, 'ä'},
+			{0x01002603, '☃'},
+			{0x0101f600, 0x1f600},
+			{0x0110ffff, 0x10ffff},
+		}
+
+		for _, tt := range tests {
+			got := KeysymToUTF32(tt.keysym)
+			if got != tt.want {
+				t.Errorf("KeysymToUTF32(%#x) = %#x, want %#x", tt.keysym, got, tt.want)
+			}
+		}
+	})
+
+	t.Run("name lookup edge cases", func(t *testing.T) {
+		names := []string{
+			"",
+			"a",
+			"A",
+			"space",
+			"SPACE",
+			"dead_acute",
+			"Dead_Acute",
+			strings.Repeat("x", 100),
+			"non_existent_keysym",
+			"0x0020",
+			"Return\n",
+			" space ",
+		}
+
+		for _, name := range names {
+			ks := KeysymFromName(name, KeysymNameNoFlags)
+			ksCaseInsensitive := KeysymFromName(name, KeysymNameCaseInsensitive)
+			_ = ks
+			_ = ksCaseInsensitive
+		}
+	})
 }
