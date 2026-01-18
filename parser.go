@@ -6,7 +6,10 @@ import (
 	"strings"
 )
 
-// Parser parses XKB text format into a Keymap.
+// Parser parses XKB text format into a [Keymap].
+//
+// Create with [NewParser], then call [Parser.Parse] to parse the input.
+// The Parser is used internally by [Context.NewKeymapFromString].
 type Parser struct {
 	lexer   *Lexer
 	current Token
@@ -24,7 +27,7 @@ type Parser struct {
 	interpretRepeatDefaultSet bool // Was interpret.repeat explicitly set in compat?
 }
 
-// NewParser creates a new parser for the given input.
+// NewParser creates a new [Parser] for the given XKB source input.
 func NewParser(input []byte) *Parser {
 	p := &Parser{
 		lexer:                  NewLexer(input),

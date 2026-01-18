@@ -1,7 +1,12 @@
 package xkb
 
-// ComposeTable holds compose sequence definitions.
-// It is immutable after creation and safe to share across goroutines.
+// ComposeTable holds compose sequence definitions for dead key handling.
+//
+// Create a ComposeTable with [Context.NewComposeTableFromLocale] or
+// [Context.NewComposeTableFromFile]. It is immutable after creation
+// and safe to share across goroutines.
+//
+// Use [ComposeTable.NewState] to create a [ComposeState] for processing input.
 type ComposeTable struct {
 	locale string
 	root   *composeNode
@@ -24,7 +29,9 @@ func (ct *ComposeTable) Locale() string {
 	return ct.locale
 }
 
-// NewState creates a new compose state for this table.
+// NewState creates a new [ComposeState] for this table.
+//
+// Each input context should have its own ComposeState.
 func (ct *ComposeTable) NewState(flags ComposeStateFlags) *ComposeState {
 	return &ComposeState{
 		table:  ct,
@@ -33,7 +40,12 @@ func (ct *ComposeTable) NewState(flags ComposeStateFlags) *ComposeState {
 }
 
 // ComposeState tracks the state of an ongoing compose sequence.
-// It is NOT safe for concurrent use.
+//
+// Feed keysyms with [ComposeState.Feed], then check [ComposeState.GetStatus].
+// If status is [ComposeComposed], retrieve the result with [ComposeState.GetUTF8]
+// or [ComposeState.GetOneSym].
+//
+// ComposeState is NOT safe for concurrent use.
 type ComposeState struct {
 	table   *ComposeTable
 	current *composeNode
@@ -41,19 +53,21 @@ type ComposeState struct {
 	result  *composeResult
 }
 
-// Table returns the compose table this state is for.
+// Table returns the [ComposeTable] this state is for.
 func (cs *ComposeState) Table() *ComposeTable {
 	return cs.table
 }
 
-// Feed processes a keysym through the compose state machine.
-// Returns whether the keysym was accepted or ignored.
+// Feed processes a [Keysym] through the compose state machine.
 //
-// After calling Feed, check GetStatus to determine the state:
-// - ComposeNothing: No compose sequence in progress
-// - ComposeComposing: Sequence in progress, waiting for more input
-// - ComposeComposed: Sequence completed, call GetOneSym/GetUTF8 for result
-// - ComposeCancelled: Sequence was cancelled (invalid keysym)
+// Returns [ComposeFeedAccepted] if the keysym was consumed, or
+// [ComposeFeedIgnored] if it doesn't start a compose sequence.
+//
+// After calling Feed, check [ComposeState.GetStatus] to determine the state:
+//   - [ComposeNothing]: No compose sequence in progress
+//   - [ComposeComposing]: Sequence in progress, waiting for more input
+//   - [ComposeComposed]: Sequence completed, call [ComposeState.GetUTF8] for result
+//   - [ComposeCancelled]: Sequence was cancelled (invalid keysym)
 func (cs *ComposeState) Feed(keysym Keysym) ComposeFeedResult {
 	if cs.table == nil || cs.table.root == nil {
 		cs.status = ComposeNothing
@@ -109,13 +123,14 @@ func (cs *ComposeState) Feed(keysym Keysym) ComposeFeedResult {
 	return ComposeFeedIgnored
 }
 
-// GetStatus returns the current compose state.
+// GetStatus returns the current [ComposeStatus].
 func (cs *ComposeState) GetStatus() ComposeStatus {
 	return cs.status
 }
 
-// GetOneSym returns the composed keysym after a successful sequence.
-// Returns KeyNoSymbol if status is not ComposeComposed.
+// GetOneSym returns the composed [Keysym] after a successful sequence.
+//
+// Returns [KeyNoSymbol] if status is not [ComposeComposed].
 func (cs *ComposeState) GetOneSym() Keysym {
 	if cs.status != ComposeComposed || cs.result == nil {
 		return KeyNoSymbol
@@ -124,7 +139,8 @@ func (cs *ComposeState) GetOneSym() Keysym {
 }
 
 // GetUTF8 returns the composed UTF-8 string after a successful sequence.
-// Returns empty string if status is not ComposeComposed.
+//
+// Returns empty string if status is not [ComposeComposed].
 func (cs *ComposeState) GetUTF8() string {
 	if cs.status != ComposeComposed || cs.result == nil {
 		return ""
@@ -133,6 +149,8 @@ func (cs *ComposeState) GetUTF8() string {
 }
 
 // Reset resets the compose state to the initial state.
+//
+// Call this to cancel an in-progress sequence (e.g., when Escape is pressed).
 func (cs *ComposeState) Reset() {
 	cs.current = nil
 	cs.status = ComposeNothing

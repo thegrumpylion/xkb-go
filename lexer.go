@@ -7,7 +7,7 @@ import (
 	"unicode/utf8"
 )
 
-// TokenType represents the type of a lexical token.
+// TokenType represents the type of a lexical token in XKB source.
 type TokenType int
 
 const (
@@ -68,7 +68,9 @@ func (t TokenType) String() string {
 	return fmt.Sprintf("TokenType(%d)", t)
 }
 
-// Token represents a lexical token from the XKB source.
+// Token represents a lexical token from XKB source.
+//
+// Returned by [Lexer.NextToken] during parsing.
 type Token struct {
 	Type  TokenType
 	Value string
@@ -87,7 +89,9 @@ func (t Token) String() string {
 	return fmt.Sprintf("Token{%s, %q, line=%d, col=%d}", t.Type, t.Value, t.Line, t.Col)
 }
 
-// Lexer tokenizes XKB source text.
+// Lexer tokenizes XKB source text into [Token] values.
+//
+// Create with [NewLexer], then call [Lexer.NextToken] repeatedly.
 type Lexer struct {
 	input []byte
 	pos   int  // current position in input
@@ -97,7 +101,7 @@ type Lexer struct {
 	width int  // width of last rune read
 }
 
-// NewLexer creates a new lexer for the given input.
+// NewLexer creates a new [Lexer] for the given XKB source input.
 func NewLexer(input []byte) *Lexer {
 	return &Lexer{
 		input: input,

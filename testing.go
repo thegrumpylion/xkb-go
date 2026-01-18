@@ -5,8 +5,11 @@ import "context"
 // This file provides test helpers for building keymaps programmatically.
 // These are exported for use in tests of packages that depend on xkb-go.
 
-// TestKeymap creates a minimal US QWERTY keymap for testing.
+// TestKeymap creates a minimal US QWERTY [Keymap] for testing.
+//
 // This keymap includes basic alphanumeric keys and modifiers.
+// It is useful for unit tests that need a valid keymap without
+// loading from system files.
 func TestKeymap() *Keymap {
 	ctx := NewContext(context.Background(), ContextNoFlags)
 
@@ -180,8 +183,11 @@ func TestKeymap() *Keymap {
 	return km
 }
 
-// TestComposeTable creates a minimal compose table for testing.
-// Includes common dead key sequences.
+// TestComposeTable creates a minimal [ComposeTable] for testing.
+//
+// Includes common dead key sequences like dead_acute + a = á.
+// Useful for unit tests that need compose functionality without
+// loading system compose files.
 func TestComposeTable() *ComposeTable {
 	// Build a simple trie for testing
 	root := &composeNode{children: make(map[Keysym]*composeNode)}

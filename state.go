@@ -1,8 +1,9 @@
 package xkb
 
-// State tracks the active keyboard state.
-// It is used to translate keycodes to keysyms based on
-// the current modifier and group state.
+// State tracks the active keyboard state for key translation.
+//
+// State is used to translate keycodes to keysyms based on the current
+// modifier and group state. Create a State with [Keymap.NewState].
 //
 // State is NOT safe for concurrent use. Each keyboard device
 // should have its own State instance.
@@ -20,15 +21,17 @@ type State struct {
 	lockedGroup  Group
 }
 
-// Keymap returns the keymap this state is for.
+// Keymap returns the [Keymap] this state is for.
 func (s *State) Keymap() *Keymap {
 	return s.keymap
 }
 
 // UpdateMask updates the keyboard state from modifier/group masks.
-// This is called in response to wl_keyboard.modifiers events.
 //
-// Returns a bitmask of StateComponent flags indicating what changed.
+// This is called in response to wl_keyboard.modifiers events from
+// a Wayland compositor. The masks correspond to the event parameters.
+//
+// Returns a bitmask of [StateComponent] flags indicating what changed.
 func (s *State) UpdateMask(
 	baseMods, latchedMods, lockedMods ModMask,
 	baseGroup, latchedGroup, lockedGroup Group,
@@ -71,10 +74,12 @@ func (s *State) UpdateMask(
 }
 
 // UpdateKey updates state based on a key press/release.
-// This is typically used with evdev input where you track key state manually.
-// Wayland clients usually use UpdateMask instead.
 //
-// Returns a bitmask of StateComponent flags indicating what changed.
+// This is typically used with evdev input where you track key state manually.
+// Wayland clients usually use [State.UpdateMask] instead, as the compositor
+// provides modifier state directly.
+//
+// Returns a bitmask of [StateComponent] flags indicating what changed.
 func (s *State) UpdateKey(keycode Keycode, direction KeyDirection) StateComponent {
 	// TODO: Implement key-based state update
 	// This requires looking up the key's actions and applying them
@@ -96,7 +101,9 @@ func (s *State) effectiveGroup() Group {
 }
 
 // KeyGetSyms returns all keysyms for a key at the current state.
+//
 // Most keys return a single keysym, but some may return multiple.
+// See also [State.KeyGetOneSym] for the common single-keysym case.
 func (s *State) KeyGetSyms(keycode Keycode) []Keysym {
 	key, ok := s.keymap.keys[keycode]
 	if !ok || len(key.groups) == 0 {
@@ -124,8 +131,10 @@ func (s *State) KeyGetSyms(keycode Keycode) []Keysym {
 }
 
 // KeyGetOneSym returns a single keysym for a key at the current state.
-// If the key produces multiple keysyms, returns KeyNoSymbol.
+//
+// If the key produces multiple keysyms, returns [KeyNoSymbol].
 // If the key produces exactly one keysym, returns it.
+// This is the most commonly used method for key translation.
 func (s *State) KeyGetOneSym(keycode Keycode) Keysym {
 	syms := s.KeyGetSyms(keycode)
 	if len(syms) == 1 {
@@ -135,7 +144,9 @@ func (s *State) KeyGetOneSym(keycode Keycode) Keysym {
 }
 
 // KeyGetUTF32 returns the Unicode codepoint for a key at the current state.
-// Returns 0 if the key doesn't produce a character.
+//
+// Returns 0 if the key doesn't produce a character (e.g., modifier keys).
+// See also [State.KeyGetUTF8] for the UTF-8 encoded string.
 func (s *State) KeyGetUTF32(keycode Keycode) rune {
 	sym := s.KeyGetOneSym(keycode)
 	if sym == KeyNoSymbol {
@@ -145,7 +156,9 @@ func (s *State) KeyGetUTF32(keycode Keycode) rune {
 }
 
 // KeyGetUTF8 returns the UTF-8 string for a key at the current state.
+//
 // Returns empty string if the key doesn't produce a character.
+// See also [State.KeyGetUTF32] for the raw codepoint.
 func (s *State) KeyGetUTF8(keycode Keycode) string {
 	r := s.KeyGetUTF32(keycode)
 	if r == 0 {
@@ -175,7 +188,9 @@ func (s *State) getLevel(kt *KeyType) Level {
 }
 
 // ModNameIsActive checks if a modifier is active.
-// The type parameter specifies which components to check.
+//
+// The typ parameter specifies which [StateComponent] to check
+// (e.g., [StateModEffective] for combined state).
 func (s *State) ModNameIsActive(name string, typ StateComponent) bool {
 	idx := s.keymap.ModGetIndex(name)
 	if idx < 0 {
@@ -184,7 +199,9 @@ func (s *State) ModNameIsActive(name string, typ StateComponent) bool {
 	return s.ModIndexIsActive(ModIndex(idx), typ)
 }
 
-// ModIndexIsActive checks if a modifier at the given index is active.
+// ModIndexIsActive checks if a modifier at the given [ModIndex] is active.
+//
+// See also [State.ModNameIsActive] for name-based lookup.
 func (s *State) ModIndexIsActive(idx ModIndex, typ StateComponent) bool {
 	mask := ModMask(1 << idx)
 	var active ModMask
@@ -205,7 +222,9 @@ func (s *State) ModIndexIsActive(idx ModIndex, typ StateComponent) bool {
 	return active&mask != 0
 }
 
-// SerializeMods returns the modifier state for the specified components.
+// SerializeMods returns the [ModMask] for the specified [StateComponent].
+//
+// Pass [StateModEffective] to get the combined modifier state.
 func (s *State) SerializeMods(typ StateComponent) ModMask {
 	var mods ModMask
 
@@ -225,7 +244,9 @@ func (s *State) SerializeMods(typ StateComponent) ModMask {
 	return mods
 }
 
-// SerializeGroup returns the group state for the specified components.
+// SerializeGroup returns the [Group] for the specified [StateComponent].
+//
+// Pass [StateGroupEffective] to get the combined group state.
 func (s *State) SerializeGroup(typ StateComponent) Group {
 	var group int
 
@@ -248,7 +269,9 @@ func (s *State) SerializeGroup(typ StateComponent) Group {
 	return Group(group)
 }
 
-// LEDNameIsActive checks if an LED indicator should be lit.
+// LEDNameIsActive checks if an [LED] indicator should be lit.
+//
+// Returns true if the LED's associated modifiers or group are active.
 func (s *State) LEDNameIsActive(name string) bool {
 	led, ok := s.keymap.leds[name]
 	if !ok {

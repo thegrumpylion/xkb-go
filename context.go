@@ -11,7 +11,7 @@ import (
 	"sync"
 )
 
-// ContextFlags controls context behavior.
+// ContextFlags controls [Context] behavior.
 type ContextFlags uint32
 
 const (
@@ -19,17 +19,22 @@ const (
 	ContextNoFlags ContextFlags = 0
 
 	// ContextNoDefaultIncludes prevents adding default include paths.
-	// By default, the context includes system XKB data paths.
+	// By default, the context includes system XKB data paths like /usr/share/X11/xkb.
 	ContextNoDefaultIncludes ContextFlags = 1 << 0
 
-	// ContextNoEnvironmentNames prevents reading RMLVO names from environment.
-	// Affects XKB_DEFAULT_RULES, XKB_DEFAULT_MODEL, etc.
+	// ContextNoEnvironmentNames prevents reading RMLVO names from environment variables.
+	// Affects XKB_DEFAULT_RULES, XKB_DEFAULT_MODEL, XKB_DEFAULT_LAYOUT, etc.
 	ContextNoEnvironmentNames ContextFlags = 1 << 1
 )
 
-// Context is the top-level xkb object.
-// It holds configuration shared across keymaps such as include paths and logging.
+// Context is the top-level xkb object that holds shared configuration.
+//
+// A Context manages include paths for loading XKB data files and provides
+// factory methods for creating [Keymap] and [ComposeTable] instances.
 // Context is safe for concurrent use.
+//
+// Create a Context with [NewContext], then use methods like [Context.NewKeymapFromString]
+// or [Context.NewKeymapFromNames] to create keymaps.
 type Context struct {
 	ctx          context.Context
 	mu           sync.RWMutex
@@ -39,8 +44,10 @@ type Context struct {
 }
 
 // NewContext creates a new xkb context with the given flags.
-// The provided context.Context is used for cancellation of operations
-// like keymap compilation and for logging.
+//
+// The provided [context.Context] is used for cancellation and logging.
+// Pass [ContextNoFlags] for default behavior, which includes adding
+// standard system XKB data paths.
 func NewContext(ctx context.Context, flags ContextFlags) *Context {
 	c := &Context{
 		ctx:    ctx,
@@ -55,7 +62,7 @@ func NewContext(ctx context.Context, flags ContextFlags) *Context {
 	return c
 }
 
-// Context returns the context.Context associated with this xkb Context.
+// Context returns the [context.Context] associated with this xkb Context.
 func (c *Context) Context() context.Context {
 	return c.ctx
 }
@@ -91,7 +98,9 @@ func (c *Context) addDefaultIncludePaths() {
 }
 
 // SetLogger sets the logger for this context.
-// If logger is nil, a no-op logger is used.
+//
+// If logger is nil, a no-op logger is used. The logger is called
+// for warnings and errors during keymap parsing and compilation.
 func (c *Context) SetLogger(logger *slog.Logger) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -122,6 +131,8 @@ func (c *Context) log(level slog.Level, msg string, args ...any) {
 }
 
 // IncludePaths returns a copy of the current include paths.
+//
+// These paths are searched when loading XKB data files for [Context.NewKeymapFromNames].
 func (c *Context) IncludePaths() []string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -132,7 +143,9 @@ func (c *Context) IncludePaths() []string {
 }
 
 // AppendIncludePath adds a path to the end of the include path list.
+//
 // Later paths have lower priority when resolving includes.
+// See also [Context.PrependIncludePath] to add high-priority paths.
 func (c *Context) AppendIncludePath(path string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -140,7 +153,9 @@ func (c *Context) AppendIncludePath(path string) {
 }
 
 // PrependIncludePath adds a path to the front of the include path list.
+//
 // Earlier paths have higher priority when resolving includes.
+// See also [Context.AppendIncludePath] to add low-priority paths.
 func (c *Context) PrependIncludePath(path string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -161,7 +176,7 @@ func (c *Context) NumIncludePaths() int {
 	return len(c.includePaths)
 }
 
-// Flags returns the context flags.
+// Flags returns the [ContextFlags] this context was created with.
 func (c *Context) Flags() ContextFlags {
 	return c.flags
 }
@@ -183,10 +198,12 @@ func (c *Context) resolvePath(filename string) string {
 }
 
 // NewKeymapFromString parses a keymap from XKB text format.
-// This is the primary method for Wayland clients, which receive
-// the complete keymap as a string from the compositor.
 //
-// The format parameter must be KeymapFormatTextV1.
+// This is the primary method for Wayland clients, which receive
+// the complete keymap as a string from the compositor via wl_keyboard.keymap.
+//
+// The format parameter must be [KeymapFormatTextV1].
+// Returns a [Keymap] that can be used to create a [State] for key translation.
 func (c *Context) NewKeymapFromString(text []byte, format KeymapFormat) (*Keymap, error) {
 	if format != KeymapFormatTextV1 {
 		return nil, &Error{Op: "NewKeymapFromString", Err: ErrUnsupportedFormat}
@@ -203,7 +220,9 @@ func (c *Context) NewKeymapFromString(text []byte, format KeymapFormat) (*Keymap
 }
 
 // NewKeymapFromFile loads and parses a keymap from a file.
-// The format parameter must be KeymapFormatTextV1.
+//
+// The format parameter must be [KeymapFormatTextV1].
+// See also [Context.NewKeymapFromString] for parsing from a byte slice.
 func (c *Context) NewKeymapFromFile(path string, format KeymapFormat) (*Keymap, error) {
 	if format != KeymapFormatTextV1 {
 		return nil, &Error{Op: "NewKeymapFromFile", Err: ErrUnsupportedFormat}
@@ -227,10 +246,13 @@ func (c *Context) NewKeymapFromFile(path string, format KeymapFormat) (*Keymap, 
 }
 
 // NewKeymapFromNames builds a keymap from RMLVO names.
-// This looks up the rules file and assembles keymap components.
 //
-// If names is nil, default values are used.
-// Empty fields in names fall back to defaults.
+// This looks up the rules file and assembles keymap components from
+// the system XKB data directories. Useful for building keymaps without
+// a Wayland compositor.
+//
+// If names is nil, default values are used (Rules="evdev", Model="pc105", Layout="us").
+// Empty fields in [RuleNames] fall back to these defaults.
 func (c *Context) NewKeymapFromNames(names *RuleNames) (*Keymap, error) {
 	if names == nil {
 		names = &RuleNames{}
@@ -245,13 +267,17 @@ func (c *Context) NewKeymapFromNames(names *RuleNames) (*Keymap, error) {
 }
 
 // NewComposeTableFromLocale loads a compose table for the given locale.
+//
 // The locale string should be in the form "language_TERRITORY.encoding"
-// (e.g., "en_US.UTF-8").
+// (e.g., "en_US.UTF-8"). If empty, the locale is read from environment
+// variables (LC_ALL, LC_CTYPE, LANG).
 //
 // The compose table is searched for in:
-// 1. $XCOMPOSEFILE environment variable
-// 2. ~/.XCompose
-// 3. System locale compose file
+//  1. $XCOMPOSEFILE environment variable
+//  2. ~/.XCompose
+//  3. System locale compose file (/usr/share/X11/locale/<locale>/Compose)
+//
+// Returns a [ComposeTable] that can be used to create a [ComposeState].
 func (c *Context) NewComposeTableFromLocale(locale string, flags ComposeCompileFlags) (*ComposeTable, error) {
 	// Normalize locale
 	if locale == "" {
@@ -292,6 +318,11 @@ func (c *Context) NewComposeTableFromLocale(locale string, flags ComposeCompileF
 }
 
 // NewComposeTableFromFile loads a compose table from a specific file.
+//
+// The locale parameter is used for resolving %L and similar substitutions
+// in include directives. The flags parameter is currently unused.
+//
+// See also [Context.NewComposeTableFromLocale] for automatic locale detection.
 func (c *Context) NewComposeTableFromFile(path string, locale string, flags ComposeCompileFlags) (*ComposeTable, error) {
 	parser := newComposeParser(locale, c.IncludePaths())
 	if err := parser.parseFile(path); err != nil {

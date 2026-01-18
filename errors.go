@@ -6,30 +6,39 @@ import (
 )
 
 // Sentinel errors for xkb operations.
+//
+// Use [errors.Is] to check for these errors:
+//
+//	if errors.Is(err, xkb.ErrInvalidSyntax) { ... }
 var (
 	// ErrNotImplemented indicates a feature is not yet implemented.
 	ErrNotImplemented = errors.New("not implemented")
 
 	// ErrUnsupportedFormat indicates an unsupported keymap or compose format.
+	// Returned when a format other than [KeymapFormatTextV1] is specified.
 	ErrUnsupportedFormat = errors.New("unsupported format")
 
-	// ErrInvalidKeymap indicates the keymap data is invalid.
+	// ErrInvalidKeymap indicates the keymap data is invalid or malformed.
 	ErrInvalidKeymap = errors.New("invalid keymap")
 
 	// ErrInvalidSyntax indicates a syntax error in the input.
+	// [SyntaxError] provides more details about the location.
 	ErrInvalidSyntax = errors.New("invalid syntax")
 
 	// ErrFileNotFound indicates a required file was not found.
 	ErrFileNotFound = errors.New("file not found")
 
-	// ErrInvalidKeycode indicates an invalid keycode.
+	// ErrInvalidKeycode indicates an invalid [Keycode].
 	ErrInvalidKeycode = errors.New("invalid keycode")
 
-	// ErrInvalidKeysym indicates an invalid keysym.
+	// ErrInvalidKeysym indicates an invalid [Keysym].
 	ErrInvalidKeysym = errors.New("invalid keysym")
 )
 
 // Error wraps an underlying error with operation context.
+//
+// Use [errors.Is] to check the underlying error type, or
+// [errors.Unwrap] to access it directly.
 type Error struct {
 	Op   string // Operation that failed (e.g., "NewKeymapFromString")
 	Path string // File path, if applicable
@@ -61,6 +70,8 @@ func (e *Error) Is(target error) bool {
 }
 
 // SyntaxError provides detailed information about a parsing error.
+//
+// Use [errors.Is] with [ErrInvalidSyntax] to check for syntax errors.
 type SyntaxError struct {
 	File    string // Source file name
 	Line    int    // Line number (1-based)

@@ -5,8 +5,11 @@ import (
 	"unicode/utf8"
 )
 
-// KeysymToUTF32 converts a keysym to a Unicode codepoint.
-// Returns 0 if the keysym doesn't represent a character.
+// KeysymToUTF32 converts a [Keysym] to a Unicode codepoint.
+//
+// Returns 0 if the keysym doesn't represent a printable character
+// (e.g., modifier keys, function keys).
+// See also [KeysymToUTF8] for the UTF-8 encoded string.
 func KeysymToUTF32(keysym Keysym) rune {
 	// Unicode keysyms: 0x01000000 + codepoint
 	if keysym >= 0x01000000 && keysym <= 0x0110ffff {
@@ -29,8 +32,10 @@ func KeysymToUTF32(keysym Keysym) rune {
 	return 0
 }
 
-// KeysymToUTF8 converts a keysym to a UTF-8 string.
-// Returns empty string if the keysym doesn't represent a character.
+// KeysymToUTF8 converts a [Keysym] to a UTF-8 string.
+//
+// Returns empty string if the keysym doesn't represent a printable character.
+// See also [KeysymToUTF32] for the raw codepoint.
 func KeysymToUTF8(keysym Keysym) string {
 	r := KeysymToUTF32(keysym)
 	if r == 0 {
@@ -41,8 +46,11 @@ func KeysymToUTF8(keysym Keysym) string {
 	return string(buf[:n])
 }
 
-// UTF32ToKeysym converts a Unicode codepoint to a keysym.
-// For codepoints outside the basic keysym range, returns Unicode keysym format.
+// UTF32ToKeysym converts a Unicode codepoint to a [Keysym].
+//
+// For codepoints outside the basic keysym range (Latin-1), returns
+// Unicode keysym format (0x01000000 + codepoint).
+// Returns [KeyNoSymbol] if the codepoint is invalid.
 func UTF32ToKeysym(r rune) Keysym {
 	// Latin-1 characters map directly
 	if r >= 0x0020 && r <= 0x007e {
@@ -67,8 +75,10 @@ func UTF32ToKeysym(r rune) Keysym {
 	return KeyNoSymbol
 }
 
-// KeysymGetName returns the name of a keysym (e.g., "Return", "a", "Shift_L").
+// KeysymGetName returns the name of a [Keysym] (e.g., "Return", "a", "Shift_L").
+//
 // Returns empty string if the keysym is not recognized.
+// See also [KeysymFromName] for the reverse lookup.
 func KeysymGetName(keysym Keysym) string {
 	// Check generated table
 	if name, ok := keysymNames[keysym]; ok {
@@ -84,10 +94,11 @@ func KeysymGetName(keysym Keysym) string {
 	return ""
 }
 
-// KeysymFromName returns the keysym for a name.
-// Returns KeyNoSymbol if the name is not recognized.
+// KeysymFromName returns the [Keysym] for a name.
 //
-// Flags can be used to control matching behavior.
+// Returns [KeyNoSymbol] if the name is not recognized.
+// Use [KeysymNameCaseInsensitive] flag for case-insensitive matching.
+// See also [KeysymGetName] for the reverse lookup.
 func KeysymFromName(name string, flags KeysymNameFlags) Keysym {
 	// Check generated table
 	if ks, ok := keysymsByName[name]; ok {
@@ -107,7 +118,7 @@ func KeysymFromName(name string, flags KeysymNameFlags) Keysym {
 	return KeyNoSymbol
 }
 
-// KeysymNameFlags controls keysym name lookup behavior.
+// KeysymNameFlags controls [KeysymFromName] lookup behavior.
 type KeysymNameFlags uint32
 
 const (
@@ -115,10 +126,13 @@ const (
 	KeysymNameNoFlags KeysymNameFlags = 0
 
 	// KeysymNameCaseInsensitive performs case-insensitive lookup.
+	// This is slower but matches names regardless of case.
 	KeysymNameCaseInsensitive KeysymNameFlags = 1 << 0
 )
 
-// KeysymIsModifier returns true if the keysym is a modifier key.
+// KeysymIsModifier returns true if the [Keysym] is a modifier key.
+//
+// Modifier keys include Shift, Control, Alt, Super, Caps Lock, Num Lock, etc.
 func KeysymIsModifier(keysym Keysym) bool {
 	return (keysym >= KeyShiftL && keysym <= KeyHyperR) ||
 		(keysym >= KeyISOLock && keysym <= KeyISOLevel5Lock) ||
@@ -127,12 +141,12 @@ func KeysymIsModifier(keysym Keysym) bool {
 		keysym == KeyScrollLock
 }
 
-// KeysymIsKeypad returns true if the keysym is a keypad key.
+// KeysymIsKeypad returns true if the [Keysym] is a keypad (numpad) key.
 func KeysymIsKeypad(keysym Keysym) bool {
 	return keysym >= KeyKPSpace && keysym <= KeyKP9
 }
 
-// KeysymIsFunctionKey returns true if the keysym is a function key (F1-F35).
+// KeysymIsFunctionKey returns true if the [Keysym] is a function key (F1-F35).
 func KeysymIsFunctionKey(keysym Keysym) bool {
 	return keysym >= KeyF1 && keysym <= KeyF35
 }
