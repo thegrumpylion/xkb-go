@@ -18,12 +18,17 @@ type Parser struct {
 	sawTypes    bool
 	sawCompat   bool
 	sawSymbols  bool
+
+	// Compat section defaults
+	interpretRepeatDefault    bool // Default repeat value for interpret statements
+	interpretRepeatDefaultSet bool // Was interpret.repeat explicitly set in compat?
 }
 
 // NewParser creates a new parser for the given input.
 func NewParser(input []byte) *Parser {
 	p := &Parser{
-		lexer: NewLexer(input),
+		lexer:                  NewLexer(input),
+		interpretRepeatDefault: true, // Keys repeat by default
 	}
 	p.advance() // Prime the parser with the first token
 	return p
@@ -209,6 +214,9 @@ func (p *Parser) Parse() (*Keymap, error) {
 
 	// Optional trailing semicolon
 	p.match(TokenSemicolon)
+
+	// Apply interpret statements to keys (for repeat settings, etc.)
+	p.applyInterprets(keymap)
 
 	// Validate the keymap
 	p.validateKeymap(keymap)
@@ -849,6 +857,11 @@ func (p *Parser) parseCompatStatement(keymap *Keymap) error {
 	case "virtual_modifiers":
 		return p.parseVirtualModifiers(keymap)
 	case "interpret":
+		// Check if this is "interpret.property = value" (default setting)
+		// or "interpret Keysym { ... }" (interpret statement)
+		if p.check(TokenDot) {
+			return p.parseInterpretDefault()
+		}
 		return p.parseInterpret(keymap)
 	case "indicator":
 		return p.parseCompatIndicator(keymap)
@@ -863,24 +876,115 @@ func (p *Parser) parseCompatStatement(keymap *Keymap) error {
 	}
 }
 
-// parseInterpret parses: interpret KeysymName { ... }
+// parseInterpretDefault parses: interpret.property = value;
+// For example: interpret.repeat = False;
+func (p *Parser) parseInterpretDefault() error {
+	p.advance() // consume .
+
+	prop, err := p.expectIdent()
+	if err != nil {
+		return err
+	}
+
+	if err := p.expect(TokenEquals); err != nil {
+		return err
+	}
+
+	switch prop {
+	case "repeat":
+		val, err := p.expectIdent()
+		if err != nil {
+			return err
+		}
+		switch strings.ToLower(val) {
+		case "true", "yes":
+			p.interpretRepeatDefault = true
+			p.interpretRepeatDefaultSet = true
+		case "false", "no":
+			p.interpretRepeatDefault = false
+			p.interpretRepeatDefaultSet = true
+		}
+	default:
+		// Skip unknown properties (like useModMapMods, locking, etc.)
+		p.skipToSemicolonOrBrace()
+	}
+
+	return nil
+}
+
+// parseInterpret parses: interpret KeysymName { ... } or interpret Keysym+ModMatch(mods) { ... }
 func (p *Parser) parseInterpret(keymap *Keymap) error {
-	// Parse keysym name or expression
-	// Can be: interpret Shift_L { ... } or interpret Any+Exactly(Shift) { ... }
-	// For now, skip to the body and parse it minimally
-	for !p.check(TokenLBrace) && !p.check(TokenEOF) && !p.check(TokenSemicolon) {
-		p.advance()
+	interp := &Interpret{}
+
+	// Parse keysym name
+	keysymName, err := p.expectIdent()
+	if err != nil {
+		return err
 	}
 
+	// Handle "Any" keysym
+	if keysymName == "Any" {
+		interp.keysym = KeyNoSymbol // KeyNoSymbol means "match any"
+	} else {
+		// Look up the keysym by name
+		sym := KeysymFromName(keysymName, KeysymNameNoFlags)
+		if sym == KeyNoSymbol {
+			// Unknown keysym, skip this interpret
+			p.skipStatementWithBraces()
+			return nil
+		}
+		interp.keysym = sym
+	}
+
+	// Check for modifier match: +AnyOf(...), +Exactly(...), etc.
+	if p.check(TokenPlus) {
+		p.advance() // consume +
+		interp.modMatch, interp.mods = p.parseModMatch()
+	}
+
+	// Expect {
 	if !p.check(TokenLBrace) {
-		return nil // No body
+		// No body, skip to semicolon
+		p.skipToSemicolonOrBrace()
+		return nil
 	}
-
 	p.advance() // consume {
 
-	// Parse interpret body - looking for action = ...
+	// Parse interpret body
 	for !p.check(TokenRBrace) && !p.check(TokenEOF) {
-		p.skipToSemicolonOrBrace()
+		if p.check(TokenIdent) {
+			ident := p.current.Value
+			p.advance()
+
+			if p.check(TokenEquals) {
+				p.advance() // consume =
+
+				switch ident {
+				case "repeat":
+					if p.check(TokenIdent) {
+						val := p.current.Value
+						p.advance()
+						switch strings.ToLower(val) {
+						case "true", "yes":
+							repeatVal := true
+							interp.repeat = &repeatVal
+						case "false", "no":
+							repeatVal := false
+							interp.repeat = &repeatVal
+						}
+					}
+				default:
+					// Skip other properties (action, locking, etc.)
+					p.skipToSemicolonOrBrace()
+				}
+			} else {
+				// Not an assignment, skip
+				p.skipToSemicolonOrBrace()
+			}
+		} else {
+			p.skipToSemicolonOrBrace()
+		}
+
 		if p.check(TokenSemicolon) {
 			p.advance()
 		}
@@ -890,7 +994,166 @@ func (p *Parser) parseInterpret(keymap *Keymap) error {
 		return err
 	}
 
+	// Store the interpret
+	keymap.interprets = append(keymap.interprets, interp)
+
 	return nil
+}
+
+// parseModMatch parses modifier match expressions like AnyOf(Shift+Lock), Exactly(Control), etc.
+func (p *Parser) parseModMatch() (ModMatch, ModMask) {
+	if !p.check(TokenIdent) {
+		return ModMatchNone, 0
+	}
+
+	matchType := p.current.Value
+	p.advance()
+
+	var modMatch ModMatch
+	switch matchType {
+	case "AnyOfOrNone":
+		modMatch = ModMatchAnyOfOrNone
+	case "AnyOf":
+		modMatch = ModMatchAnyOf
+	case "NoneOf":
+		modMatch = ModMatchNoneOf
+	case "AllOf":
+		modMatch = ModMatchAllOf
+	case "Exactly":
+		modMatch = ModMatchExactly
+	case "Any":
+		// "Any" without parens means match any modifier state
+		return ModMatchAnyOfOrNone, 0
+	default:
+		// Could be a modifier name directly (e.g., +Lock)
+		return ModMatchExactly, p.modNameToMask(matchType)
+	}
+
+	// Parse (modifiers)
+	if !p.check(TokenLParen) {
+		return modMatch, 0
+	}
+	p.advance() // consume (
+
+	var mods ModMask
+	for !p.check(TokenRParen) && !p.check(TokenEOF) {
+		if p.check(TokenIdent) {
+			mods |= p.modNameToMask(p.current.Value)
+			p.advance()
+		}
+		if p.check(TokenPlus) {
+			p.advance()
+		}
+	}
+
+	if p.check(TokenRParen) {
+		p.advance()
+	}
+
+	return modMatch, mods
+}
+
+// modNameToMask converts a modifier name to its mask.
+func (p *Parser) modNameToMask(name string) ModMask {
+	switch name {
+	case "Shift":
+		return ModShift
+	case "Lock", "Caps":
+		return ModLock
+	case "Control", "Ctrl":
+		return ModControl
+	case "Mod1", "Alt":
+		return ModMod1
+	case "Mod2", "NumLock":
+		return ModMod2
+	case "Mod3":
+		return ModMod3
+	case "Mod4", "Super":
+		return ModMod4
+	case "Mod5":
+		return ModMod5
+	case "all":
+		return ModShift | ModLock | ModControl | ModMod1 | ModMod2 | ModMod3 | ModMod4 | ModMod5
+	default:
+		return 0
+	}
+}
+
+// applyInterprets applies interpret statements to keys.
+// This is called after parsing to set key properties based on matching interprets.
+//
+// In XKB, interpret statements primarily affect modifier and action keys.
+// The "interpret Any + Any" catch-all applies to keys in the modifier map.
+// We handle this by:
+// 1. Matching specific keysyms from interpret statements
+// 2. For keys producing modifier keysyms (Shift_L, Control_L, etc.),
+//    applying the default interpret.repeat setting (typically False)
+func (p *Parser) applyInterprets(keymap *Keymap) {
+	// For each key, find matching interprets and apply their settings
+	for _, key := range keymap.keys {
+		// Collect all keysyms this key can produce
+		keysyms := make(map[Keysym]bool)
+		hasModifierKeysym := false
+		for _, group := range key.groups {
+			for _, level := range group.levels {
+				for _, sym := range level.syms {
+					if sym != KeyNoSymbol {
+						keysyms[sym] = true
+						if KeysymIsModifier(sym) {
+							hasModifierKeysym = true
+						}
+					}
+				}
+			}
+		}
+
+		// Find the best matching interpret for this key
+		// Priority: specific keysym match > no match
+		var bestMatch *Interpret
+		bestSpecificity := -1
+
+		for _, interp := range keymap.interprets {
+			// Only match specific keysyms, not the "Any" catch-all
+			if interp.keysym == KeyNoSymbol {
+				continue
+			}
+
+			if !keysyms[interp.keysym] {
+				continue
+			}
+
+			// Specific keysym match
+			specificity := 1
+
+			// Modifier matching adds specificity
+			if interp.modMatch != ModMatchNone {
+				specificity += 2
+			}
+
+			// Take this match if it's better or equal (later wins)
+			if specificity >= bestSpecificity {
+				bestMatch = interp
+				bestSpecificity = specificity
+			}
+		}
+
+		// Apply the matching interpret's settings
+		if bestMatch != nil {
+			if bestMatch.repeat != nil {
+				key.repeats = *bestMatch.repeat
+			} else {
+				key.repeats = p.interpretRepeatDefault
+			}
+		} else if hasModifierKeysym && p.interpretRepeatDefaultSet {
+			// Keys producing modifier keysyms are affected by "interpret Any + Any"
+			// which uses the default interpret.repeat setting.
+			// Only apply if interpret.repeat was explicitly set in compat section,
+			// otherwise preserve any explicit repeat setting from xkb_symbols.
+			key.repeats = p.interpretRepeatDefault
+		}
+		// If no specific interpret matched and interpret.repeat wasn't set,
+		// keep the key's repeat setting from xkb_symbols (or default true)
+	}
 }
 
 // parseCompatIndicator parses: indicator "Name" { ... }

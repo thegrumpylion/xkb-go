@@ -1588,3 +1588,234 @@ func TestParserSkipStatementWithBraces(t *testing.T) {
 		t.Errorf("AD02: expected 'q', got %#x", key2.groups[0].levels[0].syms[0])
 	}
 }
+
+// TestParserInterpretRepeatDefault tests that interpret.repeat = False affects modifier keys.
+func TestParserInterpretRepeatDefault(t *testing.T) {
+	input := `xkb_keymap {
+		xkb_keycodes "test" {
+			minimum = 8;
+			maximum = 255;
+			<AD01> = 24;
+			<LFSH> = 50;
+		};
+		xkb_types "test" {
+			type "ONE_LEVEL" { modifiers = none; };
+		};
+		xkb_compat "test" {
+			interpret.repeat = False;
+		};
+		xkb_symbols "test" {
+			key <AD01> { [ q ] };
+			key <LFSH> { [ Shift_L ] };
+		};
+	};`
+
+	p := NewParser([]byte(input))
+	keymap, err := p.Parse()
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	// Regular key should repeat (default)
+	regularKey := keymap.keys[24]
+	if regularKey == nil {
+		t.Fatal("Key AD01 not found")
+	}
+	if !regularKey.repeats {
+		t.Error("Regular key AD01 should repeat")
+	}
+
+	// Modifier key should not repeat due to interpret.repeat = False
+	modifierKey := keymap.keys[50]
+	if modifierKey == nil {
+		t.Fatal("Key LFSH not found")
+	}
+	if modifierKey.repeats {
+		t.Error("Modifier key LFSH should not repeat")
+	}
+}
+
+// TestParserInterpretRepeatExplicit tests explicit repeat settings in interpret statements.
+func TestParserInterpretRepeatExplicit(t *testing.T) {
+	input := `xkb_keymap {
+		xkb_keycodes "test" {
+			minimum = 8;
+			maximum = 255;
+			<AD01> = 24;
+			<LFSH> = 50;
+		};
+		xkb_types "test" {
+			type "ONE_LEVEL" { modifiers = none; };
+		};
+		xkb_compat "test" {
+			interpret.repeat = False;
+			interpret Shift_L {
+				repeat = True;
+			};
+		};
+		xkb_symbols "test" {
+			key <AD01> { [ q ] };
+			key <LFSH> { [ Shift_L ] };
+		};
+	};`
+
+	p := NewParser([]byte(input))
+	keymap, err := p.Parse()
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	// Shift_L key should repeat because interpret statement has explicit repeat = True
+	modifierKey := keymap.keys[50]
+	if modifierKey == nil {
+		t.Fatal("Key LFSH not found")
+	}
+	if !modifierKey.repeats {
+		t.Error("Modifier key LFSH should repeat (explicit repeat = True)")
+	}
+}
+
+// TestParserInterpretModMatch tests parsing of modifier match expressions.
+func TestParserInterpretModMatch(t *testing.T) {
+	input := `xkb_keymap {
+		xkb_keycodes "test" {
+			minimum = 8;
+			maximum = 255;
+			<AD01> = 24;
+		};
+		xkb_types "test" {
+			type "ONE_LEVEL" { modifiers = none; };
+		};
+		xkb_compat "test" {
+			interpret.repeat = False;
+			interpret Shift_Lock+AnyOf(Shift+Lock) {
+				repeat = False;
+			};
+			interpret Num_Lock+Any {
+				repeat = False;
+			};
+			interpret Any + Any {
+				repeat = False;
+			};
+		};
+		xkb_symbols "test" {
+			key <AD01> { [ q ] };
+		};
+	};`
+
+	p := NewParser([]byte(input))
+	keymap, err := p.Parse()
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	// Should have parsed interpret statements
+	if len(keymap.interprets) != 3 {
+		t.Errorf("Expected 3 interpret statements, got %d", len(keymap.interprets))
+	}
+
+	// Check Shift_Lock interpret
+	found := false
+	for _, interp := range keymap.interprets {
+		if interp.keysym == KeyShiftLock {
+			found = true
+			if interp.modMatch != ModMatchAnyOf {
+				t.Errorf("Expected ModMatchAnyOf for Shift_Lock, got %v", interp.modMatch)
+			}
+		}
+	}
+	if !found {
+		t.Error("Shift_Lock interpret not found")
+	}
+}
+
+// TestParserInterpretRepeatDefaultTrue tests that interpret.repeat = True is honored.
+func TestParserInterpretRepeatDefaultTrue(t *testing.T) {
+	input := `xkb_keymap {
+		xkb_keycodes "test" {
+			minimum = 8;
+			maximum = 255;
+			<LFSH> = 50;
+			<RCTL> = 105;
+		};
+		xkb_types "test" {
+			type "ONE_LEVEL" { modifiers = none; };
+		};
+		xkb_compat "test" {
+			interpret.repeat = True;
+		};
+		xkb_symbols "test" {
+			key <LFSH> { [ Shift_L ] };
+			key <RCTL> { [ Control_R ] };
+		};
+	};`
+
+	p := NewParser([]byte(input))
+	keymap, err := p.Parse()
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	// With interpret.repeat = True, modifier keys should repeat
+	shiftKey := keymap.keys[50]
+	if shiftKey == nil {
+		t.Fatal("Key LFSH not found")
+	}
+	if !shiftKey.repeats {
+		t.Error("LFSH should repeat when interpret.repeat = True")
+	}
+
+	ctrlKey := keymap.keys[105]
+	if ctrlKey == nil {
+		t.Fatal("Key RCTL not found")
+	}
+	if !ctrlKey.repeats {
+		t.Error("RCTL should repeat when interpret.repeat = True")
+	}
+}
+
+// TestParserInterpretMultipleKeysyms tests that a key with multiple keysyms matches appropriately.
+func TestParserInterpretMultipleKeysyms(t *testing.T) {
+	input := `xkb_keymap {
+		xkb_keycodes "test" {
+			minimum = 8;
+			maximum = 255;
+			<CAPS> = 66;
+		};
+		xkb_types "test" {
+			type "ONE_LEVEL" { modifiers = none; };
+			type "TWO_LEVEL" {
+				modifiers = Shift;
+				map[Shift] = Level2;
+			};
+		};
+		xkb_compat "test" {
+			interpret.repeat = True;
+			interpret Caps_Lock {
+				repeat = False;
+			};
+		};
+		xkb_symbols "test" {
+			key <CAPS> {
+				type = "TWO_LEVEL",
+				symbols[Group1] = [ Caps_Lock, Shift_L ]
+			};
+		};
+	};`
+
+	p := NewParser([]byte(input))
+	keymap, err := p.Parse()
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	// Key produces both Caps_Lock and Shift_L
+	// The Caps_Lock interpret should match and set repeat = False
+	capsKey := keymap.keys[66]
+	if capsKey == nil {
+		t.Fatal("Key CAPS not found")
+	}
+	if capsKey.repeats {
+		t.Error("CAPS key should not repeat (Caps_Lock interpret has repeat = False)")
+	}
+}

@@ -35,7 +35,32 @@ type Keymap struct {
 	// Group (layout) names
 	groupNames []string
 	numGroups  int
+
+	// Interpret statements from compat section
+	interprets []*Interpret
 }
+
+// Interpret represents an interpret statement from xkb_compat.
+// It maps keysyms (optionally with modifier conditions) to actions and properties.
+type Interpret struct {
+	keysym    Keysym  // The keysym to match (KeyNoSymbol means "Any")
+	modMatch  ModMatch // How to match modifiers
+	mods      ModMask  // Modifier mask for matching
+	repeat    *bool    // nil means use default, non-nil overrides
+	// action is not stored as we don't implement actions yet
+}
+
+// ModMatch specifies how to match modifiers in an interpret statement.
+type ModMatch int
+
+const (
+	ModMatchNone      ModMatch = iota // No modifier matching
+	ModMatchAnyOfOrNone              // Match if any of the mods are active (or none)
+	ModMatchAnyOf                    // Match if any of the mods are active
+	ModMatchNoneOf                   // Match if none of the mods are active
+	ModMatchAllOf                    // Match if all of the mods are active
+	ModMatchExactly                  // Match if exactly these mods are active
+)
 
 // KeyType defines how modifiers affect the shift level of a key.
 type KeyType struct {

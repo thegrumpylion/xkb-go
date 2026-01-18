@@ -521,17 +521,13 @@ func TestIntegration_KeyRepeat(t *testing.T) {
 		}
 	}
 
-	// Modifier keys typically should not repeat in XKB because the compat section
-	// has "interpret.repeat = False" which affects keys matched by interpret statements.
-	// However, our parser doesn't yet implement full compat interpret handling,
-	// so modifier keys may incorrectly have repeat=true.
-	// TODO: Implement interpret.repeat handling in compat section parsing
+	// Modifier keys should not repeat because the compat section has
+	// "interpret.repeat = False" which affects modifier keysyms
 	noRepeatKeys := []string{"LFSH", "RTSH", "LCTL", "RCTL", "CAPS"}
 	for _, name := range noRepeatKeys {
 		kc := keymap.KeyByName(name)
 		if kc != 0 && keymap.KeyRepeats(kc) {
-			// Log as known limitation rather than failing
-			t.Logf("Key %s has repeat=true (expected false, but compat interpret.repeat not yet implemented)", name)
+			t.Errorf("Key %s should not repeat", name)
 		}
 	}
 }
