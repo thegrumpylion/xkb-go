@@ -1,6 +1,9 @@
 package xkb
 
-import "unicode/utf8"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 // KeysymToUTF32 converts a keysym to a Unicode codepoint.
 // Returns 0 if the keysym doesn't represent a character.
@@ -18,8 +21,13 @@ func KeysymToUTF32(keysym Keysym) rune {
 		return rune(keysym)
 	}
 
-	// Look up in table for other keysyms
+	// Look up in manual table for other keysyms
 	if r, ok := keysymToUnicode[keysym]; ok {
+		return r
+	}
+
+	// Look up in generated table
+	if r, ok := generatedKeysymToUnicode[keysym]; ok {
 		return r
 	}
 
@@ -65,7 +73,13 @@ func UTF32ToKeysym(r rune) Keysym {
 // KeysymGetName returns the name of a keysym (e.g., "Return", "a", "Shift_L").
 // Returns empty string if the keysym is not recognized.
 func KeysymGetName(keysym Keysym) string {
+	// Check manual table first (common keysyms)
 	if name, ok := keysymNames[keysym]; ok {
+		return name
+	}
+
+	// Check generated table
+	if name, ok := generatedKeysymNames[keysym]; ok {
 		return name
 	}
 
@@ -81,15 +95,27 @@ func KeysymGetName(keysym Keysym) string {
 // KeysymFromName returns the keysym for a name.
 // Returns KeyNoSymbol if the name is not recognized.
 //
-// Flags can be used to control matching behavior (not yet implemented).
+// Flags can be used to control matching behavior.
 func KeysymFromName(name string, flags KeysymNameFlags) Keysym {
+	// Check manual table first
 	if ks, ok := keysymsByName[name]; ok {
+		return ks
+	}
+
+	// Check generated table
+	if ks, ok := generatedKeysymsByName[name]; ok {
 		return ks
 	}
 
 	// Try case-insensitive match if requested
 	if flags&KeysymNameCaseInsensitive != 0 {
-		// TODO: Implement case-insensitive lookup
+		nameLower := strings.ToLower(name)
+		// Check generated table with case-insensitive match
+		for n, ks := range generatedKeysymsByName {
+			if strings.ToLower(n) == nameLower {
+				return ks
+			}
+		}
 	}
 
 	return KeyNoSymbol
