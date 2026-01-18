@@ -109,17 +109,18 @@ The top-level container holding configuration shared across keymaps.
 
 ```go
 type Context struct {
-    includePaths []string
-    logLevel     LogLevel
-    logFn        func(level LogLevel, format string, args ...any)
+    mu           sync.RWMutex  // Thread-safe access
     flags        ContextFlags
+    logger       *slog.Logger  // Standard library structured logging
+    includePaths []string
 }
 ```
 
 **Responsibilities:**
 - Manage include paths for keymap file resolution
-- Provide logging infrastructure
+- Provide logging infrastructure via `log/slog`
 - Factory for Keymap and ComposeTable objects
+- Thread-safe operations for concurrent access
 
 **Why separate from Keymap?**
 - Multiple keymaps can share the same context
@@ -406,28 +407,26 @@ func KeysymToUTF32(ks Keysym) rune {
 
 ## Package Structure
 
+Flat package structure for simplicity (no circular imports, all types accessible):
+
 ```
 github.com/thegrumpylion/xkb-go/
-├── xkb.go           # Public API, Context
+├── context.go       # Context, include paths, logging
 ├── keymap.go        # Keymap struct and methods
 ├── state.go         # State struct and methods
 ├── compose.go       # ComposeTable and ComposeState
-├── keysym.go        # Keysym utilities
-├── keysym_names.go  # Generated keysym tables
-├── keysym_utf.go    # Keysym ↔ Unicode tables
-├── parser/
-│   ├── lexer.go     # Tokenizer
-│   ├── parser.go    # Grammar parser
-│   ├── ast.go       # AST nodes
-│   ├── keycodes.go  # xkb_keycodes section
-│   ├── types.go     # xkb_types section
-│   ├── compat.go    # xkb_compat section
-│   └── symbols.go   # xkb_symbols section
-├── compose/
-│   ├── parser.go    # Compose file parser
-│   └── table.go     # ComposeTable implementation
-└── internal/
-    └── atom/        # String interning (optional)
+├── types.go         # Core types (Keysym, Keycode, ModMask, etc.)
+├── keysym.go        # Keysym utilities and tables
+├── lexer.go         # XKB text format tokenizer
+├── parser.go        # Grammar parser, AST building
+├── errors.go        # Error types with source locations
+├── testing.go       # Test helpers (TestKeymap, TestComposeTable)
+└── docs/
+    ├── architecture.md
+    ├── parser.md
+    ├── roadmap.md
+    ├── decisions.md
+    └── references.md
 ```
 
 ---

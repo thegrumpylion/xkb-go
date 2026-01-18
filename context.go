@@ -179,8 +179,14 @@ func (c *Context) NewKeymapFromString(text []byte, format KeymapFormat) (*Keymap
 		return nil, &Error{Op: "NewKeymapFromString", Err: ErrUnsupportedFormat}
 	}
 
-	// TODO: Implement parser
-	return nil, &Error{Op: "NewKeymapFromString", Err: ErrNotImplemented}
+	parser := NewParser(text)
+	keymap, err := parser.Parse()
+	if err != nil {
+		return nil, &Error{Op: "NewKeymapFromString", Err: err}
+	}
+
+	keymap.ctx = c
+	return keymap, nil
 }
 
 // NewKeymapFromNames builds a keymap from RMLVO names.

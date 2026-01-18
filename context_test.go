@@ -98,12 +98,54 @@ func TestContextFlags(t *testing.T) {
 	}
 }
 
-func TestContextNewKeymapFromStringNotImplemented(t *testing.T) {
+func TestContextNewKeymapFromString(t *testing.T) {
 	ctx := NewContext(ContextNoFlags)
 
-	_, err := ctx.NewKeymapFromString([]byte("test"), KeymapFormatTextV1)
+	input := `xkb_keymap {
+		xkb_keycodes "test" {
+			minimum = 8;
+			maximum = 255;
+			<AD01> = 24;
+		};
+		xkb_types "test" {
+			type "ONE_LEVEL" {
+				modifiers = none;
+			};
+			type "TWO_LEVEL" {
+				modifiers = Shift;
+				map[Shift] = Level2;
+			};
+		};
+		xkb_compat "test" {};
+		xkb_symbols "test" {
+			key <AD01> { [ q, Q ] };
+		};
+	};`
+
+	keymap, err := ctx.NewKeymapFromString([]byte(input), KeymapFormatTextV1)
+	if err != nil {
+		t.Fatalf("NewKeymapFromString failed: %v", err)
+	}
+
+	if keymap == nil {
+		t.Fatal("Keymap is nil")
+	}
+
+	if keymap.Context() != ctx {
+		t.Error("Keymap context not set correctly")
+	}
+
+	if keymap.KeyByName("AD01") != 24 {
+		t.Errorf("KeyByName(AD01) = %d, want 24", keymap.KeyByName("AD01"))
+	}
+}
+
+func TestContextNewKeymapFromStringInvalid(t *testing.T) {
+	ctx := NewContext(ContextNoFlags)
+
+	_, err := ctx.NewKeymapFromString([]byte("invalid"), KeymapFormatTextV1)
 	if err == nil {
-		t.Error("Expected error for unimplemented function")
+		t.Error("Expected error for invalid keymap")
 	}
 }
 

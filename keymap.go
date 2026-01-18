@@ -70,6 +70,7 @@ type KeyLevel struct {
 // LED represents a keyboard LED indicator.
 type LED struct {
 	name  string
+	index int     // Hardware LED index (1-based from keycodes section)
 	mods  ModMask // Modifiers that activate this LED
 	group Group   // Group that activates this LED
 }
