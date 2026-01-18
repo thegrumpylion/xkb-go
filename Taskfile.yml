@@ -5,6 +5,7 @@ version: "3"
 vars:
   COVERAGE_DIR: .coverage
   COVERAGE_FILE: "{{.COVERAGE_DIR}}/coverage.out"
+  COVERAGE_FILE_INTEGRATION: "{{.COVERAGE_DIR}}/coverage-integration.out"
   MIN_COVERAGE: "80"
 
 tasks:
@@ -24,6 +25,21 @@ tasks:
     desc: Run tests (quiet output)
     cmds:
       - go test -race ./...
+
+  test:integration:
+    desc: Run integration tests (requires system XKB data)
+    cmds:
+      - go test -tags=integration -race -v ./...
+
+  test:integration:short:
+    desc: Run integration tests (quiet output)
+    cmds:
+      - go test -tags=integration -race ./...
+
+  test:all:
+    desc: Run all tests including integration
+    cmds:
+      - go test -tags=integration -race -v ./...
 
   # Coverage
   cover:
@@ -57,6 +73,45 @@ tasks:
     desc: Remove coverage artifacts
     cmds:
       - rm -rf {{.COVERAGE_DIR}}
+
+  # Integration Coverage
+  cover:integration:
+    desc: Run tests with integration coverage report
+    cmds:
+      - mkdir -p {{.COVERAGE_DIR}}
+      - go test -tags=integration -race -coverprofile={{.COVERAGE_FILE_INTEGRATION}} -covermode=atomic ./...
+      - go tool cover -func={{.COVERAGE_FILE_INTEGRATION}}
+
+  cover:integration:html:
+    desc: Open HTML integration coverage report in browser
+    deps: [cover:integration]
+    cmds:
+      - go tool cover -html={{.COVERAGE_FILE_INTEGRATION}} -o {{.COVERAGE_DIR}}/coverage-integration.html
+      - xdg-open {{.COVERAGE_DIR}}/coverage-integration.html 2>/dev/null || open {{.COVERAGE_DIR}}/coverage-integration.html 2>/dev/null || echo "Open {{.COVERAGE_DIR}}/coverage-integration.html in browser"
+
+  cover:integration:check:
+    desc: Verify integration coverage meets minimum threshold ({{.MIN_COVERAGE}}%)
+    deps: [cover:integration]
+    cmds:
+      - |
+        COVERAGE=$(go tool cover -func={{.COVERAGE_FILE_INTEGRATION}} | grep total | awk '{print $3}' | tr -d '%' | cut -d. -f1)
+        echo "Total integration coverage: ${COVERAGE}%"
+        if [ "$COVERAGE" -lt "{{.MIN_COVERAGE}}" ]; then
+          echo "FAIL: Coverage ${COVERAGE}% is below minimum {{.MIN_COVERAGE}}%"
+          exit 1
+        fi
+        echo "OK: Coverage meets minimum threshold"
+
+  cover:all:
+    desc: Run both unit and integration coverage
+    cmds:
+      - task: cover
+      - task: cover:integration
+      - echo "---"
+      - echo "Unit test coverage:"
+      - go tool cover -func={{.COVERAGE_FILE}} | grep total
+      - echo "Integration test coverage:"
+      - go tool cover -func={{.COVERAGE_FILE_INTEGRATION}} | grep total
 
   # Code quality
   fmt:
