@@ -518,7 +518,7 @@ This implementation aims for API compatibility where practical:
 
 | libxkbcommon | xkb-go |
 |--------------|--------|
-| `xkb_context_new()` | `xkb.NewContext()` |
+| `xkb_context_new()` | `xkb.NewContext(ctx, flags)` |
 | `xkb_keymap_new_from_string()` | `ctx.NewKeymapFromString()` |
 | `xkb_state_new()` | `keymap.NewState()` |
 | `xkb_state_key_get_one_sym()` | `state.KeyGetOneSym()` |

@@ -1,13 +1,14 @@
 package xkb
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"testing"
 )
 
 func TestNewContext(t *testing.T) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 	if ctx == nil {
 		t.Fatal("NewContext returned nil")
 	}
@@ -18,7 +19,7 @@ func TestNewContext(t *testing.T) {
 }
 
 func TestNewContextNoDefaultIncludes(t *testing.T) {
-	ctx := NewContext(ContextNoDefaultIncludes)
+	ctx := NewContext(context.Background(), ContextNoDefaultIncludes)
 	if ctx == nil {
 		t.Fatal("NewContext returned nil")
 	}
@@ -30,7 +31,7 @@ func TestNewContextNoDefaultIncludes(t *testing.T) {
 }
 
 func TestContextIncludePaths(t *testing.T) {
-	ctx := NewContext(ContextNoDefaultIncludes)
+	ctx := NewContext(context.Background(), ContextNoDefaultIncludes)
 
 	// Append paths
 	ctx.AppendIncludePath("/path/a")
@@ -62,7 +63,7 @@ func TestContextIncludePaths(t *testing.T) {
 }
 
 func TestContextLogger(t *testing.T) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	// Default logger should be set
 	if ctx.Logger() == nil {
@@ -87,7 +88,7 @@ func TestContextLogger(t *testing.T) {
 }
 
 func TestContextFlags(t *testing.T) {
-	ctx := NewContext(ContextNoDefaultIncludes | ContextNoEnvironmentNames)
+	ctx := NewContext(context.Background(), ContextNoDefaultIncludes|ContextNoEnvironmentNames)
 
 	flags := ctx.Flags()
 	if flags&ContextNoDefaultIncludes == 0 {
@@ -99,7 +100,7 @@ func TestContextFlags(t *testing.T) {
 }
 
 func TestContextNewKeymapFromString(t *testing.T) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	input := `xkb_keymap {
 		xkb_keycodes "test" {
@@ -141,7 +142,7 @@ func TestContextNewKeymapFromString(t *testing.T) {
 }
 
 func TestContextNewKeymapFromStringInvalid(t *testing.T) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	_, err := ctx.NewKeymapFromString([]byte("invalid"), KeymapFormatTextV1)
 	if err == nil {
@@ -150,7 +151,7 @@ func TestContextNewKeymapFromStringInvalid(t *testing.T) {
 }
 
 func TestContextNewKeymapFromStringUnsupportedFormat(t *testing.T) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	_, err := ctx.NewKeymapFromString([]byte("test"), KeymapFormat(99))
 	if err == nil {
@@ -159,7 +160,7 @@ func TestContextNewKeymapFromStringUnsupportedFormat(t *testing.T) {
 }
 
 func TestContextNewKeymapFromFile(t *testing.T) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	keymap, err := ctx.NewKeymapFromFile("testdata/us_intl.xkb", KeymapFormatTextV1)
 	if err != nil {
@@ -182,7 +183,7 @@ func TestContextNewKeymapFromFile(t *testing.T) {
 }
 
 func TestContextNewKeymapFromFileNotFound(t *testing.T) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	_, err := ctx.NewKeymapFromFile("/nonexistent/keymap.xkb", KeymapFormatTextV1)
 	if err == nil {
@@ -191,7 +192,7 @@ func TestContextNewKeymapFromFileNotFound(t *testing.T) {
 }
 
 func TestContextNewKeymapFromFileUnsupportedFormat(t *testing.T) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	_, err := ctx.NewKeymapFromFile("testdata/us_intl.xkb", KeymapFormat(99))
 	if err == nil {
@@ -200,7 +201,7 @@ func TestContextNewKeymapFromFileUnsupportedFormat(t *testing.T) {
 }
 
 func TestContextNewKeymapFromNames(t *testing.T) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	// Test with US layout
 	keymap, err := ctx.NewKeymapFromNames(&RuleNames{Layout: "us"})
@@ -234,7 +235,7 @@ func TestContextNewKeymapFromNames(t *testing.T) {
 }
 
 func TestContextNewKeymapFromNamesDefaults(t *testing.T) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	// Test with nil (should use defaults)
 	keymap, err := ctx.NewKeymapFromNames(nil)
@@ -248,7 +249,7 @@ func TestContextNewKeymapFromNamesDefaults(t *testing.T) {
 }
 
 func TestContextNewComposeTableFromLocale(t *testing.T) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	table, err := ctx.NewComposeTableFromLocale("en_US.UTF-8", ComposeCompileNoFlags)
 	if err != nil {
@@ -261,7 +262,7 @@ func TestContextNewComposeTableFromLocale(t *testing.T) {
 }
 
 func TestContextNewComposeTableFromFile(t *testing.T) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	_, err := ctx.NewComposeTableFromFile("/nonexistent", "en_US.UTF-8", ComposeCompileNoFlags)
 	if err == nil {
@@ -270,7 +271,7 @@ func TestContextNewComposeTableFromFile(t *testing.T) {
 }
 
 func TestContextConcurrentAccess(t *testing.T) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	// Test concurrent access to include paths
 	done := make(chan bool)

@@ -1,6 +1,7 @@
 package xkb_test
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/thegrumpylion/xkb-go"
@@ -8,7 +9,7 @@ import (
 
 func ExampleNewContext() {
 	// Create a context with default settings
-	ctx := xkb.NewContext(xkb.ContextNoFlags)
+	ctx := xkb.NewContext(context.Background(), xkb.ContextNoFlags)
 
 	// The context manages include paths and logging
 	paths := ctx.IncludePaths()
@@ -17,7 +18,7 @@ func ExampleNewContext() {
 }
 
 func ExampleContext_NewKeymapFromString() {
-	ctx := xkb.NewContext(xkb.ContextNoFlags)
+	ctx := xkb.NewContext(context.Background(), xkb.ContextNoFlags)
 
 	// In real usage, this would be the keymap string from Wayland
 	// received via wl_keyboard.keymap event

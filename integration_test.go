@@ -3,6 +3,7 @@
 package xkb
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -55,7 +56,7 @@ var testLayouts = []struct {
 }
 
 func TestIntegration_RMLVOLayouts(t *testing.T) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	for _, tc := range testLayouts {
 		name := tc.layout
@@ -103,7 +104,7 @@ func TestIntegration_RMLVOLayouts(t *testing.T) {
 }
 
 func TestIntegration_RoundTrip(t *testing.T) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	layouts := []struct {
 		layout  string
@@ -174,7 +175,7 @@ func TestIntegration_RoundTrip(t *testing.T) {
 }
 
 func TestIntegration_KeyTranslation(t *testing.T) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	// Test US layout key translation
 	t.Run("US_Layout", func(t *testing.T) {
@@ -313,7 +314,7 @@ func TestIntegration_KeyTranslation(t *testing.T) {
 }
 
 func TestIntegration_ModifierState(t *testing.T) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	keymap, err := ctx.NewKeymapFromNames(&RuleNames{Layout: "us"})
 	if err != nil {
@@ -370,7 +371,7 @@ func TestIntegration_ModifierState(t *testing.T) {
 }
 
 func TestIntegration_ComposeWithLayout(t *testing.T) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	// Load compose table
 	table, err := ctx.NewComposeTableFromLocale("en_US.UTF-8", ComposeCompileNoFlags)
@@ -416,7 +417,7 @@ func TestIntegration_ComposeWithLayout(t *testing.T) {
 }
 
 func TestIntegration_MultiGroup(t *testing.T) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	// Try to create a keymap with multiple groups
 	// This might not work on all systems, so we'll use a layout that typically has 2 groups
@@ -463,7 +464,7 @@ func TestIntegration_MultiGroup(t *testing.T) {
 }
 
 func TestIntegration_SpecialKeys(t *testing.T) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	keymap, err := ctx.NewKeymapFromNames(&RuleNames{Layout: "us"})
 	if err != nil {
@@ -505,7 +506,7 @@ func TestIntegration_SpecialKeys(t *testing.T) {
 }
 
 func TestIntegration_KeyRepeat(t *testing.T) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	keymap, err := ctx.NewKeymapFromNames(&RuleNames{Layout: "us"})
 	if err != nil {
@@ -533,7 +534,7 @@ func TestIntegration_KeyRepeat(t *testing.T) {
 }
 
 func TestIntegration_LEDIndicators(t *testing.T) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	keymap, err := ctx.NewKeymapFromNames(&RuleNames{Layout: "us"})
 	if err != nil {
@@ -571,7 +572,7 @@ func TestIntegration_LEDIndicators(t *testing.T) {
 }
 
 func TestIntegration_GetAsStringCompleteness(t *testing.T) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	keymap, err := ctx.NewKeymapFromNames(&RuleNames{Layout: "us"})
 	if err != nil {
@@ -616,7 +617,7 @@ func TestIntegration_GetAsStringCompleteness(t *testing.T) {
 
 // Benchmark RMLVO compilation for various layouts
 func BenchmarkIntegration_RMLVOCompilation(b *testing.B) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	layouts := []string{"us", "de", "fr", "ru", "jp"}
 

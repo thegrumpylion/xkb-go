@@ -1,6 +1,7 @@
 package xkb
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -241,7 +242,7 @@ func TestComposeParserBasic(t *testing.T) {
 		t.Fatalf("Failed to write test compose file: %v", err)
 	}
 
-	ctx := NewContext(ContextNoDefaultIncludes)
+	ctx := NewContext(context.Background(), ContextNoDefaultIncludes)
 	table, err := ctx.NewComposeTableFromFile(composePath, "en_US.UTF-8", ComposeCompileNoFlags)
 	if err != nil {
 		t.Fatalf("NewComposeTableFromFile failed: %v", err)
@@ -278,7 +279,7 @@ func TestComposeParserWithKeysymName(t *testing.T) {
 		t.Fatalf("Failed to write test compose file: %v", err)
 	}
 
-	ctx := NewContext(ContextNoDefaultIncludes)
+	ctx := NewContext(context.Background(), ContextNoDefaultIncludes)
 	table, err := ctx.NewComposeTableFromFile(composePath, "en_US.UTF-8", ComposeCompileNoFlags)
 	if err != nil {
 		t.Fatalf("NewComposeTableFromFile failed: %v", err)
@@ -314,7 +315,7 @@ func TestComposeParserInclude(t *testing.T) {
 		t.Fatalf("Failed to write main compose file: %v", err)
 	}
 
-	ctx := NewContext(ContextNoDefaultIncludes)
+	ctx := NewContext(context.Background(), ContextNoDefaultIncludes)
 	table, err := ctx.NewComposeTableFromFile(mainPath, "en_US.UTF-8", ComposeCompileNoFlags)
 	if err != nil {
 		t.Fatalf("NewComposeTableFromFile failed: %v", err)
@@ -350,7 +351,7 @@ func TestComposeParserUnicodeKeysym(t *testing.T) {
 		t.Fatalf("Failed to write test compose file: %v", err)
 	}
 
-	ctx := NewContext(ContextNoDefaultIncludes)
+	ctx := NewContext(context.Background(), ContextNoDefaultIncludes)
 	table, err := ctx.NewComposeTableFromFile(composePath, "en_US.UTF-8", ComposeCompileNoFlags)
 	if err != nil {
 		t.Fatalf("NewComposeTableFromFile failed: %v", err)
@@ -380,7 +381,7 @@ func TestComposeParserMultiKey(t *testing.T) {
 		t.Fatalf("Failed to write test compose file: %v", err)
 	}
 
-	ctx := NewContext(ContextNoDefaultIncludes)
+	ctx := NewContext(context.Background(), ContextNoDefaultIncludes)
 	table, err := ctx.NewComposeTableFromFile(composePath, "en_US.UTF-8", ComposeCompileNoFlags)
 	if err != nil {
 		t.Fatalf("NewComposeTableFromFile failed: %v", err)
@@ -413,7 +414,7 @@ func TestComposeParserEscapeSequences(t *testing.T) {
 		t.Fatalf("Failed to write test compose file: %v", err)
 	}
 
-	ctx := NewContext(ContextNoDefaultIncludes)
+	ctx := NewContext(context.Background(), ContextNoDefaultIncludes)
 	table, err := ctx.NewComposeTableFromFile(composePath, "en_US.UTF-8", ComposeCompileNoFlags)
 	if err != nil {
 		t.Fatalf("NewComposeTableFromFile failed: %v", err)
@@ -441,7 +442,7 @@ func TestComposeParserEscapeSequences(t *testing.T) {
 }
 
 func TestComposeTableNotFound(t *testing.T) {
-	ctx := NewContext(ContextNoDefaultIncludes)
+	ctx := NewContext(context.Background(), ContextNoDefaultIncludes)
 
 	_, err := ctx.NewComposeTableFromFile("/nonexistent/path/Compose", "en_US.UTF-8", ComposeCompileNoFlags)
 	if err == nil {
@@ -461,7 +462,7 @@ func TestComposeParserOverride(t *testing.T) {
 		t.Fatalf("Failed to write test compose file: %v", err)
 	}
 
-	ctx := NewContext(ContextNoDefaultIncludes)
+	ctx := NewContext(context.Background(), ContextNoDefaultIncludes)
 	table, err := ctx.NewComposeTableFromFile(composePath, "en_US.UTF-8", ComposeCompileNoFlags)
 	if err != nil {
 		t.Fatalf("NewComposeTableFromFile failed: %v", err)
@@ -482,7 +483,7 @@ func TestComposeWithRealFile(t *testing.T) {
 		t.Skipf("Compose file not found: %s", composePath)
 	}
 
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 	table, err := ctx.NewComposeTableFromFile(composePath, "en_US.UTF-8", ComposeCompileNoFlags)
 	if err != nil {
 		t.Fatalf("Failed to load compose file: %v", err)
@@ -527,7 +528,7 @@ func TestComposeWithRealFile(t *testing.T) {
 }
 
 func TestNewComposeTableFromLocale(t *testing.T) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	// Test loading by locale
 	table, err := ctx.NewComposeTableFromLocale("en_US.UTF-8", ComposeCompileNoFlags)

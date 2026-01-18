@@ -28,13 +28,14 @@ See [docs/roadmap.md](docs/roadmap.md) for full implementation status.
 package main
 
 import (
+    "context"
     "fmt"
     "github.com/thegrumpylion/xkb-go"
 )
 
 func main() {
     // Create context
-    ctx := xkb.NewContext(xkb.ContextNoFlags)
+    ctx := xkb.NewContext(context.Background(), xkb.ContextNoFlags)
 
     // Load keymap from Wayland compositor
     keymap, err := ctx.NewKeymapFromString(keymapData, xkb.KeymapFormatTextV1)
@@ -78,7 +79,7 @@ API is designed to be similar to libxkbcommon for easy migration:
 
 | libxkbcommon | xkb-go |
 |--------------|--------|
-| `xkb_context_new()` | `xkb.NewContext()` |
+| `xkb_context_new()` | `xkb.NewContext(ctx, flags)` |
 | `xkb_keymap_new_from_string()` | `ctx.NewKeymapFromString()` |
 | `xkb_keymap_new_from_file()` | `ctx.NewKeymapFromFile()` |
 | `xkb_keymap_new_from_names()` | `ctx.NewKeymapFromNames()` |

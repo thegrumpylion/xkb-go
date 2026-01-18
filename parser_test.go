@@ -1,6 +1,7 @@
 package xkb
 
 import (
+	"context"
 	"os"
 	"testing"
 )
@@ -805,7 +806,7 @@ func TestParserIntegration(t *testing.T) {
 	};
 };`
 
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 	keymap, err := ctx.NewKeymapFromString([]byte(input), KeymapFormatTextV1)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
@@ -895,7 +896,7 @@ func TestParserRealKeymap(t *testing.T) {
 		t.Skipf("Skipping real keymap test: %v", err)
 	}
 
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 	keymap, err := ctx.NewKeymapFromString(data, KeymapFormatTextV1)
 	if err != nil {
 		t.Fatalf("Failed to parse system keymap: %v", err)

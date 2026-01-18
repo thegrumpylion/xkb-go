@@ -2,6 +2,7 @@ package xkb
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -30,6 +31,7 @@ const (
 // It holds configuration shared across keymaps such as include paths and logging.
 // Context is safe for concurrent use.
 type Context struct {
+	ctx          context.Context
 	mu           sync.RWMutex
 	flags        ContextFlags
 	logger       *slog.Logger
@@ -37,8 +39,11 @@ type Context struct {
 }
 
 // NewContext creates a new xkb context with the given flags.
-func NewContext(flags ContextFlags) *Context {
+// The provided context.Context is used for cancellation of operations
+// like keymap compilation and for logging.
+func NewContext(ctx context.Context, flags ContextFlags) *Context {
 	c := &Context{
+		ctx:    ctx,
 		flags:  flags,
 		logger: slog.Default(),
 	}
@@ -48,6 +53,11 @@ func NewContext(flags ContextFlags) *Context {
 	}
 
 	return c
+}
+
+// Context returns the context.Context associated with this xkb Context.
+func (c *Context) Context() context.Context {
+	return c.ctx
 }
 
 // addDefaultIncludePaths adds the standard XKB data directories.
@@ -107,7 +117,7 @@ func (c *Context) log(level slog.Level, msg string, args ...any) {
 	c.mu.RUnlock()
 
 	if logger != nil {
-		logger.Log(nil, level, msg, args...)
+		logger.Log(c.ctx, level, msg, args...)
 	}
 }
 

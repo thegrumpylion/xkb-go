@@ -11,7 +11,7 @@
 //
 // Basic usage:
 //
-//	ctx := xkb.NewContext(xkb.ContextNoFlags)
+//	ctx := xkb.NewContext(context.Background(), xkb.ContextNoFlags)
 //	keymap, err := ctx.NewKeymapFromNames(&xkb.RuleNames{
 //	    Layout: "us",
 //	})

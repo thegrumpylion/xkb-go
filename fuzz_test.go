@@ -1,6 +1,7 @@
 package xkb
 
 import (
+	"context"
 	"os"
 	"testing"
 )
@@ -147,7 +148,7 @@ func FuzzKeymapFromString(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		ctx := NewContext(ContextNoFlags)
+		ctx := NewContext(context.Background(), ContextNoFlags)
 		_, _ = ctx.NewKeymapFromString(data, KeymapFormatTextV1)
 	})
 }

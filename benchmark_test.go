@@ -1,6 +1,7 @@
 package xkb
 
 import (
+	"context"
 	"os"
 	"testing"
 )
@@ -62,7 +63,7 @@ func BenchmarkNewKeymapFromString(b *testing.B) {
 		b.Skip("No system keymap available")
 	}
 
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -238,7 +239,7 @@ func BenchmarkComposeFeed_Sequence(b *testing.B) {
 // BenchmarkNewContext benchmarks context creation
 func BenchmarkNewContext(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		_ = NewContext(ContextNoFlags)
+		_ = NewContext(context.Background(), ContextNoFlags)
 	}
 }
 
@@ -342,7 +343,7 @@ func BenchmarkKeymap_KeyGetName(b *testing.B) {
 
 // BenchmarkNewKeymapFromFile benchmarks loading keymap from file
 func BenchmarkNewKeymapFromFile(b *testing.B) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -352,7 +353,7 @@ func BenchmarkNewKeymapFromFile(b *testing.B) {
 
 // BenchmarkNewKeymapFromNames benchmarks RMLVO compilation
 func BenchmarkNewKeymapFromNames(b *testing.B) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	// Skip if system XKB data not available
 	_, err := ctx.NewKeymapFromNames(&RuleNames{Layout: "us"})
@@ -378,7 +379,7 @@ func BenchmarkKeymap_GetAsString(b *testing.B) {
 
 // BenchmarkKeymap_GetAsString_Large benchmarks serialization of a large keymap
 func BenchmarkKeymap_GetAsString_Large(b *testing.B) {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 	km, err := ctx.NewKeymapFromFile("testdata/us_intl.xkb", KeymapFormatTextV1)
 	if err != nil {
 		b.Skip("testdata/us_intl.xkb not available")

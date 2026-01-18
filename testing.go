@@ -1,12 +1,14 @@
 package xkb
 
+import "context"
+
 // This file provides test helpers for building keymaps programmatically.
 // These are exported for use in tests of packages that depend on xkb-go.
 
 // TestKeymap creates a minimal US QWERTY keymap for testing.
 // This keymap includes basic alphanumeric keys and modifiers.
 func TestKeymap() *Keymap {
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 
 	// Create key types
 	oneLevel := &KeyType{

@@ -1,6 +1,9 @@
 package xkb
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestKeymapMinMaxKeycode(t *testing.T) {
 	km := TestKeymap()
@@ -234,7 +237,7 @@ func TestKeymapGetAsString(t *testing.T) {
 	}
 
 	// Verify it can be re-parsed
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 	reparsed, err := ctx.NewKeymapFromString([]byte(output), KeymapFormatTextV1)
 	if err != nil {
 		t.Fatalf("Failed to re-parse GetAsString output: %v", err)
@@ -263,7 +266,7 @@ func TestKeymapGetAsStringUnsupportedFormat(t *testing.T) {
 
 func TestKeymapGetAsStringRoundTrip(t *testing.T) {
 	// Load real keymap
-	ctx := NewContext(ContextNoFlags)
+	ctx := NewContext(context.Background(), ContextNoFlags)
 	original, err := ctx.NewKeymapFromFile("testdata/us_intl.xkb", KeymapFormatTextV1)
 	if err != nil {
 		t.Fatalf("Failed to load keymap: %v", err)

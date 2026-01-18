@@ -65,7 +65,7 @@ if err != nil {
 
 ```go
 // Default: uses slog.Default()
-ctx := xkb.NewContext(xkb.ContextNoFlags)
+ctx := xkb.NewContext(context.Background(), xkb.ContextNoFlags)
 
 // Custom logger
 ctx.SetLogger(myLogger)
@@ -107,7 +107,7 @@ ctx.SetLogger(myLogger)
 
 | libxkbcommon (C) | xkb-go (Go) |
 |------------------|-------------|
-| `xkb_context_new(flags)` | `xkb.NewContext(flags)` |
+| `xkb_context_new(flags)` | `xkb.NewContext(ctx, flags)` |
 | `xkb_context_unref(ctx)` | (garbage collected) |
 | `xkb_keymap_new_from_string(ctx, str, fmt, flags)` | `ctx.NewKeymapFromString(data, fmt)` |
 | Returns `NULL` on error | Returns `error` |
