@@ -161,7 +161,7 @@ func TestContextNewKeymapFromStringUnsupportedFormat(t *testing.T) {
 func TestContextNewKeymapFromFile(t *testing.T) {
 	ctx := NewContext(ContextNoFlags)
 
-	keymap, err := ctx.NewKeymapFromFile("testdata/us.xkb", KeymapFormatTextV1)
+	keymap, err := ctx.NewKeymapFromFile("testdata/us_intl.xkb", KeymapFormatTextV1)
 	if err != nil {
 		t.Fatalf("NewKeymapFromFile failed: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestContextNewKeymapFromFileNotFound(t *testing.T) {
 func TestContextNewKeymapFromFileUnsupportedFormat(t *testing.T) {
 	ctx := NewContext(ContextNoFlags)
 
-	_, err := ctx.NewKeymapFromFile("testdata/us.xkb", KeymapFormat(99))
+	_, err := ctx.NewKeymapFromFile("testdata/us_intl.xkb", KeymapFormat(99))
 	if err == nil {
 		t.Error("Expected error for unsupported format")
 	}

@@ -264,7 +264,7 @@ func TestKeymapGetAsStringUnsupportedFormat(t *testing.T) {
 func TestKeymapGetAsStringRoundTrip(t *testing.T) {
 	// Load real keymap
 	ctx := NewContext(ContextNoFlags)
-	original, err := ctx.NewKeymapFromFile("testdata/us.xkb", KeymapFormatTextV1)
+	original, err := ctx.NewKeymapFromFile("testdata/us_intl.xkb", KeymapFormatTextV1)
 	if err != nil {
 		t.Fatalf("Failed to load keymap: %v", err)
 	}

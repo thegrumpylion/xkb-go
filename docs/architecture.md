@@ -41,6 +41,7 @@ Scancode 41 (` key) → Keycode 49
 ```
 
 XKB uses symbolic names for keycodes:
+
 - `<AD01>` = keycode 24 (first key of row A-D, i.e., Q on QWERTY)
 - `<TLDE>` = keycode 49 (tilde key)
 - `<LFSH>` = keycode 50 (left shift)
@@ -64,16 +65,19 @@ Keysyms above 0x01000000 are Unicode codepoints + 0x01000000.
 Keys that modify the behavior of other keys.
 
 **Real Modifiers** (8 total, hardware-mapped):
+
 - Shift, Lock (Caps Lock), Control
 - Mod1 (usually Alt), Mod2 (usually Num Lock)
 - Mod3, Mod4 (usually Super/Win), Mod5 (usually ISO_Level3_Shift/AltGr)
 
 **Virtual Modifiers** (user-defined, mapped to real):
+
 - Alt, Super, Hyper, Meta, NumLock, LevelThree, etc.
 
 ### Groups (Layouts)
 
 Different keyboard layouts the user can switch between.
+
 - Group 1: English (US)
 - Group 2: Russian
 - Group 3: German
@@ -82,6 +86,7 @@ Different keyboard layouts the user can switch between.
 ### Levels
 
 Different outputs from the same key based on modifier state.
+
 - Level 1: `a` (no modifiers)
 - Level 2: `A` (Shift)
 - Level 3: `æ` (AltGr on some layouts)
@@ -117,12 +122,14 @@ type Context struct {
 ```
 
 **Responsibilities:**
+
 - Manage include paths for keymap file resolution
 - Provide logging infrastructure via `log/slog`
 - Factory for Keymap and ComposeTable objects
 - Thread-safe operations for concurrent access
 
 **Why separate from Keymap?**
+
 - Multiple keymaps can share the same context
 - Logging and include paths are environment-level concerns
 - Follows libxkbcommon's design for compatibility
@@ -230,6 +237,7 @@ xkb_keymap {
 ```
 
 **Lexer tokens:**
+
 - Keywords: `xkb_keymap`, `xkb_keycodes`, `type`, `key`, `include`, etc.
 - Identifiers: `TLDE`, `TWO_LEVEL`, `Shift`, etc.
 - Strings: `"us"`, `"basic"`
@@ -237,6 +245,7 @@ xkb_keymap {
 - Operators: `=`, `+`, `[`, `]`, `{`, `}`, `;`, etc.
 
 **Parser complexity:**
+
 - Include resolution with merge modes
 - Virtual modifier declaration and resolution
 - Action parsing for xkb_compat
@@ -271,6 +280,7 @@ type State struct {
 ### State Update Methods
 
 **From Wayland/X11 (server sends modifier state):**
+
 ```go
 func (s *State) UpdateMask(
     baseMods, latchedMods, lockedMods ModMask,
@@ -279,6 +289,7 @@ func (s *State) UpdateMask(
 ```
 
 **From evdev (manual key tracking):**
+
 ```go
 func (s *State) UpdateKey(keycode Keycode, direction KeyDirection) StateComponent
 ```
@@ -352,7 +363,36 @@ From `/usr/share/X11/locale/en_US.UTF-8/Compose`:
 
 ---
 
-## Layer 6: Keysym Utilities
+## Layer 6: RMLVO Compilation
+
+Build keymaps from rules files and RMLVO names.
+
+```go
+type RuleNames struct {
+    Rules   string  // e.g., "evdev"
+    Model   string  // e.g., "pc105"
+    Layout  string  // e.g., "us"
+    Variant string  // e.g., "intl"
+    Options string  // e.g., "ctrl:nocaps"
+}
+```
+
+### Compilation Flow
+
+```
+RuleNames → Rules File Parser → KcCGST → Component Loader → Keymap String → Parser
+```
+
+1. Parse rules file (e.g., `/usr/share/X11/xkb/rules/evdev`)
+2. Resolve RMLVO to component specifiers (keycodes, types, compat, symbols)
+3. Load component files from include paths
+4. Resolve `include` and `augment` directives recursively
+5. Extract and merge sections into complete keymap
+6. Parse assembled keymap with standard parser
+
+---
+
+## Layer 7: Keysym Utilities
 
 Static functions and tables for keysym handling.
 
@@ -411,8 +451,8 @@ Flat package structure for simplicity (no circular imports, all types accessible
 
 ```
 github.com/thegrumpylion/xkb-go/
-├── context.go         # Context, include paths, logging
-├── keymap.go          # Keymap struct and methods
+├── context.go         # Context, include paths, factory methods
+├── keymap.go          # Keymap struct and query/serialization methods
 ├── state.go           # State struct and methods
 ├── compose.go         # ComposeTable and ComposeState
 ├── compose_parser.go  # Compose file format parser
@@ -420,6 +460,7 @@ github.com/thegrumpylion/xkb-go/
 ├── keysym.go          # Keysym utilities and tables
 ├── lexer.go           # XKB text format tokenizer
 ├── parser.go          # XKB keymap grammar parser
+├── rules.go           # RMLVO compilation (NewKeymapFromNames)
 ├── errors.go          # Error types with source locations
 ├── testing.go         # Test helpers (TestKeymap, TestComposeTable)
 └── docs/

@@ -35,6 +35,7 @@ xkb_keymap {
 The lexer converts source text into a stream of tokens.
 
 **Token Types:**
+
 - `TokenEOF` - End of file
 - `TokenIdent` - Identifier (e.g., `xkb_keymap`, `Shift`, `AD01`)
 - `TokenString` - Quoted string (e.g., `"evdev"`, `"us"`)
@@ -43,6 +44,7 @@ The lexer converts source text into a stream of tokens.
 - Punctuation: `{`, `}`, `[`, `]`, `(`, `)`, `;`, `,`, `=`, `+`, `-`, `!`, `~`
 
 **Lexer Features:**
+
 - Line/column tracking for error messages
 - Comment handling (`//` and `/* */`)
 - String escape sequences
@@ -53,6 +55,7 @@ The lexer converts source text into a stream of tokens.
 The parser consumes tokens and builds the `Keymap` structure.
 
 **Parsing Strategy:**
+
 - Recursive descent parser
 - Each section has its own parsing function
 - Error recovery: skip to next `;` or `}` on error
@@ -80,6 +83,7 @@ xkb_keycodes "evdev" {
 ```
 
 **Parsed into:**
+
 - `keymap.minKeycode`, `keymap.maxKeycode`
 - `keymap.keycodeNames` map
 - `keymap.keycodesByName` map
@@ -119,6 +123,7 @@ xkb_types "complete" {
 ```
 
 **Parsed into:**
+
 - `keymap.virtualMods` map
 - `keymap.types` map with `KeyType` structs
 
@@ -155,6 +160,7 @@ xkb_symbols "us" {
 ```
 
 **Parsed into:**
+
 - `keymap.groupNames`
 - `keymap.keys` map with groups, levels, keysyms
 - Modifier mappings
@@ -184,6 +190,7 @@ xkb_compat "complete" {
 ```
 
 **Parsed into:**
+
 - Interpret rules applied to keys
 - LED indicator definitions
 
@@ -252,6 +259,7 @@ func (e *ParseError) Error() string {
 ```
 
 **Error Recovery:**
+
 - On error, skip tokens until `;` or `}`
 - Continue parsing to report multiple errors
 - Return first error but try to find more
@@ -264,12 +272,14 @@ For Wayland, keymaps are self-contained (no includes needed). But the format sup
 
 ```
 include "us(basic)"
+augment "iso9995"
 ```
 
 **Strategy:**
-- Parse include statements
+
+- Parse `include` and `augment` statements
 - For Wayland use: warn but continue (keymap should be complete)
-- For RMLVO use (future): resolve from include paths
+- For RMLVO use: resolve from context include paths, recursively loading component files
 
 ---
 
@@ -287,17 +297,20 @@ include "us(basic)"
 ## Test Strategy
 
 ### Unit Tests
+
 - Lexer: tokenize known inputs
 - Each section parser: parse snippets
 
 ### Integration Tests
+
 - Parse complete keymaps dumped from Wayland
 - Verify key translation matches libxkbcommon
 
 ### Test Data
+
 ```bash
 # Dump current keymap
-xkbcli compile-keymap --layout us > testdata/us.xkb
+xkbcli compile-keymap --layout us > testdata/us_intl.xkb
 xkbcli compile-keymap --layout de > testdata/de.xkb
 xkbcli compile-keymap --layout us --variant intl > testdata/us_intl.xkb
 ```
@@ -327,4 +340,48 @@ xkb_keymap {
         key <AD01> { [ q ] };
     };
 };
+```
+
+---
+
+## RMLVO Compilation
+
+RMLVO (Rules, Model, Layout, Variant, Options) is implemented in `rules.go`.
+
+### Flow
+
+```
+RMLVO Names → Rules File → KcCGST → Component Files → Assembled Keymap → Parser
+```
+
+1. **Rules file parsing**: Parse `/usr/share/X11/xkb/rules/evdev`
+2. **RMLVO → KcCGST resolution**: Map names to component specifiers
+3. **Component loading**: Load keycodes, types, compat, symbols files
+4. **Include resolution**: Recursively resolve `include` and `augment` directives
+5. **Section extraction**: Extract named sections from component files
+6. **Assembly**: Merge sections into complete keymap string
+7. **Parsing**: Parse the assembled keymap with the standard parser
+
+### Rules File Format
+
+```
+! model         = keycodes
+  pc105         = evdev
+  *             = evdev
+
+! layout        = symbols
+  us            = +us
+  de            = +de
+  *             = +%l%(v)
+
+! option        = symbols
+  ctrl:nocaps   = +ctrl(nocaps)
+```
+
+### Component Spec Format
+
+```
+evdev+aliases(qwerty)     # keycodes: evdev + aliases section "qwerty"
+pc+us+inet(evdev)         # symbols: pc + us + inet section "evdev"
+complete                   # types: complete (default section)
 ```

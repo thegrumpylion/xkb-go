@@ -18,9 +18,9 @@ xkb-go provides the same functionality in pure Go:
 
 ## Status
 
-**Work in Progress** - Not yet ready for production use.
+**Feature Complete** - Core functionality is implemented and tested.
 
-See [docs/roadmap.md](docs/roadmap.md) for implementation progress.
+See [docs/roadmap.md](docs/roadmap.md) for full implementation status.
 
 ## Usage
 
@@ -60,10 +60,11 @@ func main() {
 ## Features
 
 - [x] Keysym utilities (name lookup, Unicode conversion)
-- [ ] Keymap parsing (XKB text format v1)
-- [ ] Keyboard state tracking
-- [ ] Modifier handling
-- [ ] Compose/dead key support
+- [x] Keymap parsing (XKB text format v1)
+- [x] Keyboard state tracking
+- [x] Modifier handling
+- [x] Compose/dead key support
+- [x] RMLVO compilation (`NewKeymapFromNames`)
 
 ## Documentation
 
@@ -79,9 +80,14 @@ API is designed to be similar to libxkbcommon for easy migration:
 |--------------|--------|
 | `xkb_context_new()` | `xkb.NewContext()` |
 | `xkb_keymap_new_from_string()` | `ctx.NewKeymapFromString()` |
+| `xkb_keymap_new_from_file()` | `ctx.NewKeymapFromFile()` |
+| `xkb_keymap_new_from_names()` | `ctx.NewKeymapFromNames()` |
+| `xkb_keymap_get_as_string()` | `keymap.GetAsString()` |
 | `xkb_state_new()` | `keymap.NewState()` |
 | `xkb_state_key_get_one_sym()` | `state.KeyGetOneSym()` |
 | `xkb_state_key_get_utf32()` | `state.KeyGetUTF32()` |
+| `xkb_compose_table_new_from_locale()` | `ctx.NewComposeTableFromLocale()` |
+| `xkb_compose_state_feed()` | `composeState.Feed()` |
 
 ## License
 
@@ -90,5 +96,3 @@ MIT License - see [LICENSE](LICENSE)
 ## Related Projects
 
 - [libxkbcommon](https://xkbcommon.org/) - The C reference implementation
-- [wlui](https://github.com/thegrumpylion/wlui) - Go HTML/CSS UI library
-- [wl-polkit-agent](https://github.com/greatliontech/wl-polkit-agent) - Wayland polkit agent (uses this library)
