@@ -1825,3 +1825,58 @@ func TestParserInterpretMultipleKeysyms(t *testing.T) {
 		t.Error("CAPS key should not repeat (Caps_Lock interpret has repeat = False)")
 	}
 }
+
+// TestParserInterpretNumericKeysym tests that interpret statements can use numeric keysym values.
+// This syntax is used by some Wayland compositors: interpret 0xff7f+AnyOf(all) { ... }
+func TestParserInterpretNumericKeysym(t *testing.T) {
+	input := `xkb_keymap {
+		xkb_keycodes "test" {
+			minimum = 8;
+			maximum = 255;
+			<NMLK> = 77;
+		};
+		xkb_types "test" {
+			type "ONE_LEVEL" { modifiers = none; };
+		};
+		xkb_compat "test" {
+			interpret 0xff7f+AnyOf(all) {
+				repeat = False;
+			};
+			interpret 0xffe1 {
+				repeat = False;
+			};
+		};
+		xkb_symbols "test" {
+			key <NMLK> { [ Num_Lock ] };
+		};
+	};`
+
+	p := NewParser([]byte(input))
+	keymap, err := p.Parse()
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	// Should have parsed both interpret statements with numeric keysyms
+	if len(keymap.interprets) != 2 {
+		t.Errorf("Expected 2 interpret statements, got %d", len(keymap.interprets))
+	}
+
+	// Check that 0xff7f (Num_Lock) was parsed
+	foundNumLock := false
+	foundShiftL := false
+	for _, interp := range keymap.interprets {
+		if interp.keysym == 0xff7f { // Num_Lock
+			foundNumLock = true
+		}
+		if interp.keysym == 0xffe1 { // Shift_L
+			foundShiftL = true
+		}
+	}
+	if !foundNumLock {
+		t.Error("interpret with keysym 0xff7f not found")
+	}
+	if !foundShiftL {
+		t.Error("interpret with keysym 0xffe1 not found")
+	}
+}

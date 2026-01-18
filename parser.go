@@ -915,28 +915,39 @@ func (p *Parser) parseInterpretDefault() error {
 	return nil
 }
 
-// parseInterpret parses: interpret KeysymName { ... } or interpret Keysym+ModMatch(mods) { ... }
+// parseInterpret parses: interpret KeysymName { ... } or interpret 0xNNNN+ModMatch(mods) { ... }
 func (p *Parser) parseInterpret(keymap *Keymap) error {
 	interp := &Interpret{}
 
-	// Parse keysym name
-	keysymName, err := p.expectIdent()
-	if err != nil {
-		return err
-	}
-
-	// Handle "Any" keysym
-	if keysymName == "Any" {
-		interp.keysym = KeyNoSymbol // KeyNoSymbol means "match any"
-	} else {
-		// Look up the keysym by name
-		sym := KeysymFromName(keysymName, KeysymNameNoFlags)
-		if sym == KeyNoSymbol {
-			// Unknown keysym, skip this interpret
-			p.skipStatementWithBraces()
-			return nil
+	// Parse keysym - can be identifier (name) or number (hex value)
+	if p.check(TokenNumber) {
+		// Numeric keysym like 0xff7f
+		numStr := p.current.Value
+		p.advance()
+		num, err := p.parseNumber(numStr)
+		if err != nil {
+			return err
 		}
-		interp.keysym = sym
+		interp.keysym = Keysym(num)
+	} else {
+		keysymName, err := p.expectIdent()
+		if err != nil {
+			return err
+		}
+
+		// Handle "Any" keysym
+		if keysymName == "Any" {
+			interp.keysym = KeyNoSymbol // KeyNoSymbol means "match any"
+		} else {
+			// Look up the keysym by name
+			sym := KeysymFromName(keysymName, KeysymNameNoFlags)
+			if sym == KeyNoSymbol {
+				// Unknown keysym, skip this interpret
+				p.skipStatementWithBraces()
+				return nil
+			}
+			interp.keysym = sym
+		}
 	}
 
 	// Check for modifier match: +AnyOf(...), +Exactly(...), etc.
