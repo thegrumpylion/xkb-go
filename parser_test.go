@@ -1,6 +1,7 @@
 package xkb
 
 import (
+	"os"
 	"testing"
 )
 
@@ -885,4 +886,108 @@ func TestParserIntegration(t *testing.T) {
 	if keymap.NumLEDs() < 3 {
 		t.Errorf("NumLEDs = %d, want at least 3", keymap.NumLEDs())
 	}
+}
+
+// TestParserRealKeymap tests parsing a real system keymap
+func TestParserRealKeymap(t *testing.T) {
+	data, err := os.ReadFile("testdata/system_keymap.xkb")
+	if err != nil {
+		t.Skipf("Skipping real keymap test: %v", err)
+	}
+
+	ctx := NewContext(ContextNoFlags)
+	keymap, err := ctx.NewKeymapFromString(data, KeymapFormatTextV1)
+	if err != nil {
+		t.Fatalf("Failed to parse system keymap: %v", err)
+	}
+
+	t.Logf("Parsed system keymap successfully:")
+	t.Logf("  Min keycode: %d", keymap.MinKeycode())
+	t.Logf("  Max keycode: %d", keymap.MaxKeycode())
+	t.Logf("  Num types: %d", keymap.NumTypes())
+	t.Logf("  Num groups: %d", keymap.NumGroups())
+	t.Logf("  Num LEDs: %d", keymap.NumLEDs())
+	t.Logf("  Group 1 name: %q", keymap.GroupName(0))
+
+	// Verify some common keycodes exist
+	commonKeys := []struct {
+		name    string
+		keycode Keycode
+	}{
+		{"ESC", 9},
+		{"AD01", 24},   // Q
+		{"RTRN", 36},   // Return
+		{"SPCE", 65},   // Space
+		{"LFSH", 50},   // Left Shift
+		{"CAPS", 66},   // Caps Lock
+	}
+
+	for _, kk := range commonKeys {
+		if keymap.KeyByName(kk.name) != kk.keycode {
+			t.Errorf("KeyByName(%q) = %d, want %d", kk.name, keymap.KeyByName(kk.name), kk.keycode)
+		}
+	}
+
+	// Test State with the real keymap
+	state := keymap.NewState()
+
+	// Test 'q' key (AD01 = keycode 24)
+	sym := state.KeyGetOneSym(24)
+	if sym != Keysym('q') {
+		t.Errorf("KeyGetOneSym(24) = %#x (%s), want 'q'", sym, KeysymGetName(sym))
+	}
+
+	// Test with Shift
+	state.UpdateMask(ModShift, 0, 0, 0, 0, 0)
+	sym = state.KeyGetOneSym(24)
+	if sym != Keysym('Q') {
+		t.Errorf("KeyGetOneSym(24) with Shift = %#x (%s), want 'Q'", sym, KeysymGetName(sym))
+	}
+
+	// Test 'a' key (AC01 = keycode 38)
+	state.UpdateMask(0, 0, 0, 0, 0, 0)
+	sym = state.KeyGetOneSym(38)
+	if sym != Keysym('a') {
+		t.Errorf("KeyGetOneSym(38) = %#x (%s), want 'a'", sym, KeysymGetName(sym))
+	}
+
+	// Test space (SPCE = keycode 65)
+	sym = state.KeyGetOneSym(65)
+	if sym != Keysym(' ') {
+		t.Errorf("KeyGetOneSym(65) = %#x (%s), want space", sym, KeysymGetName(sym))
+	}
+
+	// Test Return (RTRN = keycode 36)
+	sym = state.KeyGetOneSym(36)
+	if sym != KeyReturn {
+		t.Errorf("KeyGetOneSym(36) = %#x (%s), want Return", sym, KeysymGetName(sym))
+	}
+
+	// Test Escape (ESC = keycode 9)
+	sym = state.KeyGetOneSym(9)
+	if sym != KeyEscape {
+		t.Errorf("KeyGetOneSym(9) = %#x (%s), want Escape", sym, KeysymGetName(sym))
+	}
+
+	// Test number row
+	state.UpdateMask(0, 0, 0, 0, 0, 0)
+	sym = state.KeyGetOneSym(10) // AE01 = '1'
+	if sym != Keysym('1') {
+		t.Errorf("KeyGetOneSym(10) = %#x (%s), want '1'", sym, KeysymGetName(sym))
+	}
+
+	state.UpdateMask(ModShift, 0, 0, 0, 0, 0)
+	sym = state.KeyGetOneSym(10) // AE01 with Shift = '!'
+	if sym != Keysym('!') {
+		t.Errorf("KeyGetOneSym(10) with Shift = %#x (%s), want '!'", sym, KeysymGetName(sym))
+	}
+
+	// Test UTF-8 conversion
+	state.UpdateMask(0, 0, 0, 0, 0, 0)
+	utf8 := state.KeyGetUTF8(24) // 'q'
+	if utf8 != "q" {
+		t.Errorf("KeyGetUTF8(24) = %q, want %q", utf8, "q")
+	}
+
+	t.Log("Real keymap test passed!")
 }

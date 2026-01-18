@@ -202,7 +202,7 @@ func (p *Parser) parseSection(keymap *Keymap) error {
 		return p.parseKeycodes(keymap)
 	case "xkb_types":
 		return p.parseTypes(keymap)
-	case "xkb_compat":
+	case "xkb_compat", "xkb_compatibility":
 		return p.parseCompat(keymap)
 	case "xkb_symbols":
 		return p.parseSymbols(keymap)
@@ -435,7 +435,7 @@ func (p *Parser) parseTypesStatement(keymap *Keymap) error {
 	}
 }
 
-// parseVirtualModifiers parses: virtual_modifiers Name1, Name2, ...;
+// parseVirtualModifiers parses: virtual_modifiers Name1, Name2, Name3=0x4000, ...;
 func (p *Parser) parseVirtualModifiers(keymap *Keymap) error {
 	for {
 		name, err := p.expectIdent()
@@ -443,11 +443,19 @@ func (p *Parser) parseVirtualModifiers(keymap *Keymap) error {
 			return err
 		}
 
-		// Assign a virtual modifier index if not already assigned
+		// Check for optional =value assignment (e.g., Hyper=0x4000)
+		var mask ModMask
+		if p.match(TokenEquals) {
+			num, err := p.expectNumber()
+			if err != nil {
+				return err
+			}
+			mask = ModMask(num)
+		}
+
+		// Assign a virtual modifier
 		if _, exists := keymap.virtualMods[name]; !exists {
-			// Virtual modifiers map to Mod1-Mod5 bits (indices 3-7)
-			// For now, just record them without assignment
-			keymap.virtualMods[name] = 0
+			keymap.virtualMods[name] = mask
 		}
 
 		if !p.match(TokenComma) {
@@ -583,7 +591,7 @@ func (p *Parser) modifierNameToMask(name string, keymap *Keymap) ModMask {
 	}
 }
 
-// parseTypeMapEntry parses: map[MODS] = LevelN
+// parseTypeMapEntry parses: map[MODS] = LevelN or map[MODS] = N
 func (p *Parser) parseTypeMapEntry(keyType *KeyType, keymap *Keymap) error {
 	if err := p.expect(TokenLBracket); err != nil {
 		return err
@@ -602,14 +610,23 @@ func (p *Parser) parseTypeMapEntry(keyType *KeyType, keymap *Keymap) error {
 		return err
 	}
 
-	levelName, err := p.expectIdent()
-	if err != nil {
-		return err
-	}
-
-	level, err := p.parseLevelName(levelName)
-	if err != nil {
-		return err
+	// Handle both "Level2" and numeric "2"
+	var level Level
+	if p.check(TokenNumber) {
+		num, err := p.expectNumber()
+		if err != nil {
+			return err
+		}
+		level = Level(num - 1) // Convert 1-based to 0-based
+	} else {
+		levelName, err := p.expectIdent()
+		if err != nil {
+			return err
+		}
+		level, err = p.parseLevelName(levelName)
+		if err != nil {
+			return err
+		}
 	}
 
 	keyType.entries = append(keyType.entries, KeyTypeEntry{
@@ -637,20 +654,30 @@ func (p *Parser) parseLevelName(name string) (Level, error) {
 	return Level(num - 1), nil // Convert 1-based to 0-based
 }
 
-// parseTypeLevelName parses: level_name[LevelN] = "Name"
+// parseTypeLevelName parses: level_name[LevelN] = "Name" or level_name[N] = "Name"
 func (p *Parser) parseTypeLevelName(keyType *KeyType) error {
 	if err := p.expect(TokenLBracket); err != nil {
 		return err
 	}
 
-	levelName, err := p.expectIdent()
-	if err != nil {
-		return err
-	}
-
-	level, err := p.parseLevelName(levelName)
-	if err != nil {
-		return err
+	// Handle both "Level1" and numeric "1" indices
+	var level Level
+	if p.check(TokenNumber) {
+		num, err := p.expectNumber()
+		if err != nil {
+			return err
+		}
+		level = Level(num - 1) // Convert 1-based to 0-based
+	} else {
+		levelName, err := p.expectIdent()
+		if err != nil {
+			return err
+		}
+		var err2 error
+		level, err2 = p.parseLevelName(levelName)
+		if err2 != nil {
+			return err2
+		}
 	}
 
 	if err := p.expect(TokenRBracket); err != nil {
@@ -661,7 +688,7 @@ func (p *Parser) parseTypeLevelName(keyType *KeyType) error {
 		return err
 	}
 
-	_, err = p.expectString()
+	_, err := p.expectString()
 	if err != nil {
 		return err
 	}
@@ -881,20 +908,29 @@ func (p *Parser) parseSymbolsStatement(keymap *Keymap) error {
 	}
 }
 
-// parseGroupName parses: name[GroupN] = "Name"
+// parseGroupName parses: name[GroupN] = "Name" or name[N] = "Name"
 func (p *Parser) parseGroupName(keymap *Keymap) error {
 	if err := p.expect(TokenLBracket); err != nil {
 		return err
 	}
 
-	groupIdent, err := p.expectIdent()
-	if err != nil {
-		return err
-	}
-
-	group, err := p.parseGroupIdent(groupIdent)
-	if err != nil {
-		return err
+	// Handle both "Group1" and numeric "1" indices
+	var group int
+	if p.check(TokenNumber) {
+		num, err := p.expectNumber()
+		if err != nil {
+			return err
+		}
+		group = num - 1 // Convert 1-based to 0-based
+	} else {
+		groupIdent, err := p.expectIdent()
+		if err != nil {
+			return err
+		}
+		group, err = p.parseGroupIdent(groupIdent)
+		if err != nil {
+			return err
+		}
 	}
 
 	if err := p.expect(TokenRBracket); err != nil {
@@ -1009,13 +1045,23 @@ func (p *Parser) parseKeyBody(key *Key, keymap *Keymap) error {
 				if err := p.expect(TokenLBracket); err != nil {
 					return err
 				}
-				groupIdent, err := p.expectIdent()
-				if err != nil {
-					return err
-				}
-				group, err := p.parseGroupIdent(groupIdent)
-				if err != nil {
-					return err
+				// Handle both "Group1" and numeric "1" indices
+				var group int
+				if p.check(TokenNumber) {
+					num, err := p.expectNumber()
+					if err != nil {
+						return err
+					}
+					group = num - 1 // Convert 1-based to 0-based
+				} else {
+					groupIdent, err := p.expectIdent()
+					if err != nil {
+						return err
+					}
+					group, err = p.parseGroupIdent(groupIdent)
+					if err != nil {
+						return err
+					}
 				}
 				if err := p.expect(TokenRBracket); err != nil {
 					return err

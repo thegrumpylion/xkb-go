@@ -476,8 +476,9 @@ func isIdentChar(r rune) bool {
 }
 
 // isKeycodeChar returns true if r can be part of a keycode name.
+// Keycode names can contain letters, digits, underscores, and +/- (e.g., VOL+, VOL-)
 func isKeycodeChar(r rune) bool {
-	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_'
+	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '+' || r == '-'
 }
 
 // Tokenize returns all tokens from the input.
