@@ -1880,3 +1880,190 @@ func TestParserInterpretNumericKeysym(t *testing.T) {
 		t.Error("interpret with keysym 0xffe1 not found")
 	}
 }
+
+// TestVirtualModifierAltMapping tests that the Alt virtual modifier is correctly
+// mapped to Mod1, which is essential for key types like PC_ALT_LEVEL2 used in
+// keyboard layout switching (e.g., Alt+Space).
+func TestVirtualModifierAltMapping(t *testing.T) {
+	// This keymap simulates what a compositor sends when Alt+Space is configured
+	// for layout switching. The space key has PC_ALT_LEVEL2 type with:
+	// - Level 1 (index 0): space (normal key)
+	// - Level 2 (index 1): ISO_Next_Group (layout switch)
+	input := `xkb_keymap {
+		xkb_keycodes "test" {
+			minimum = 8;
+			maximum = 255;
+			<SPCE> = 65;
+		};
+		xkb_types "test" {
+			virtual_modifiers Alt;
+
+			type "ONE_LEVEL" {
+				modifiers = none;
+			};
+
+			type "PC_ALT_LEVEL2" {
+				modifiers = Alt;
+				map[Alt] = Level2;
+				level_name[Level1] = "Base";
+				level_name[Level2] = "Alt";
+			};
+		};
+		xkb_compat "test" {};
+		xkb_symbols "test" {
+			key <SPCE> {
+				type = "PC_ALT_LEVEL2",
+				symbols[Group1] = [ space, ISO_Next_Group ]
+			};
+		};
+	};`
+
+	p := NewParser([]byte(input))
+	keymap, err := p.Parse()
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	// Check that PC_ALT_LEVEL2 type was parsed correctly
+	pcAltType := keymap.types["PC_ALT_LEVEL2"]
+	if pcAltType == nil {
+		t.Fatal("Type PC_ALT_LEVEL2 not found")
+	}
+
+	// The type's mods should be Mod1 (0x8), not 0
+	// This was the bug: Alt wasn't being mapped to Mod1
+	if pcAltType.mods != ModMod1 {
+		t.Errorf("PC_ALT_LEVEL2 mods = 0x%x, want 0x%x (Mod1/Alt)", pcAltType.mods, ModMod1)
+	}
+
+	// Check that there's exactly one entry mapping Alt to Level2
+	if len(pcAltType.entries) != 1 {
+		t.Errorf("PC_ALT_LEVEL2 has %d entries, want 1", len(pcAltType.entries))
+	}
+
+	if len(pcAltType.entries) > 0 {
+		entry := pcAltType.entries[0]
+		if entry.mods != ModMod1 {
+			t.Errorf("PC_ALT_LEVEL2 entry mods = 0x%x, want 0x%x (Mod1/Alt)", entry.mods, ModMod1)
+		}
+		if entry.level != 1 { // Level2 in XKB = level 1 (0-indexed)
+			t.Errorf("PC_ALT_LEVEL2 entry level = %d, want 1", entry.level)
+		}
+	}
+
+	// Check the space key has correct keysyms
+	key := keymap.keys[65]
+	if key == nil {
+		t.Fatal("Space key (65) not found")
+	}
+	if len(key.groups) == 0 || len(key.groups[0].levels) < 2 {
+		t.Fatal("Space key has insufficient levels")
+	}
+	if key.groups[0].levels[0].syms[0] != 0x20 { // space keysym
+		t.Errorf("Space key level 0 = 0x%x, want 0x20 (space)", key.groups[0].levels[0].syms[0])
+	}
+	if key.groups[0].levels[1].syms[0] != 0xfe08 { // ISO_Next_Group keysym
+		t.Errorf("Space key level 1 = 0x%x, want 0xfe08 (ISO_Next_Group)", key.groups[0].levels[1].syms[0])
+	}
+
+	// Now test the State behavior
+	state := keymap.NewState()
+
+	// Without Alt pressed, space should return keysym 0x20 (space)
+	sym := state.KeyGetOneSym(65)
+	if sym != 0x20 {
+		t.Errorf("KeyGetOneSym(65) without Alt = 0x%x, want 0x20 (space)", sym)
+	}
+
+	// With Alt pressed (Mod1), space should return keysym 0xfe08 (ISO_Next_Group)
+	state.UpdateMask(ModMod1, 0, 0, 0, 0, 0) // Press Alt (Mod1)
+	sym = state.KeyGetOneSym(65)
+	if sym != 0xfe08 {
+		t.Errorf("KeyGetOneSym(65) with Alt = 0x%x, want 0xfe08 (ISO_Next_Group)", sym)
+	}
+
+	// Release Alt, space should return space again
+	state.UpdateMask(0, 0, 0, 0, 0, 0) // Release Alt
+	sym = state.KeyGetOneSym(65)
+	if sym != 0x20 {
+		t.Errorf("KeyGetOneSym(65) after Alt release = 0x%x, want 0x20 (space)", sym)
+	}
+}
+
+// TestVirtualModifierStandardMappings tests that common virtual modifiers
+// are correctly mapped to their standard real modifiers.
+func TestVirtualModifierStandardMappings(t *testing.T) {
+	input := `xkb_keymap {
+		xkb_keycodes "test" {
+			minimum = 8;
+			maximum = 255;
+			<TEST> = 10;
+		};
+		xkb_types "test" {
+			virtual_modifiers Alt, Meta, NumLock, Super, Hyper, LevelThree, AltGr;
+
+			type "TEST_ALT" {
+				modifiers = Alt;
+				map[Alt] = Level2;
+			};
+			type "TEST_META" {
+				modifiers = Meta;
+				map[Meta] = Level2;
+			};
+			type "TEST_NUMLOCK" {
+				modifiers = NumLock;
+				map[NumLock] = Level2;
+			};
+			type "TEST_SUPER" {
+				modifiers = Super;
+				map[Super] = Level2;
+			};
+			type "TEST_HYPER" {
+				modifiers = Hyper;
+				map[Hyper] = Level2;
+			};
+			type "TEST_LEVELTHREE" {
+				modifiers = LevelThree;
+				map[LevelThree] = Level2;
+			};
+			type "TEST_ALTGR" {
+				modifiers = AltGr;
+				map[AltGr] = Level2;
+			};
+		};
+		xkb_compat "test" {};
+		xkb_symbols "test" {
+			key <TEST> { [ a ] };
+		};
+	};`
+
+	p := NewParser([]byte(input))
+	keymap, err := p.Parse()
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	tests := []struct {
+		typeName string
+		wantMods ModMask
+	}{
+		{"TEST_ALT", ModMod1},       // Alt -> Mod1
+		{"TEST_META", ModMod1},      // Meta -> Mod1
+		{"TEST_NUMLOCK", ModMod2},   // NumLock -> Mod2
+		{"TEST_SUPER", ModMod4},     // Super -> Mod4
+		{"TEST_HYPER", ModMod4},     // Hyper -> Mod4
+		{"TEST_LEVELTHREE", ModMod5}, // LevelThree -> Mod5
+		{"TEST_ALTGR", ModMod5},     // AltGr -> Mod5
+	}
+
+	for _, tt := range tests {
+		kt := keymap.types[tt.typeName]
+		if kt == nil {
+			t.Errorf("Type %s not found", tt.typeName)
+			continue
+		}
+		if kt.mods != tt.wantMods {
+			t.Errorf("%s mods = 0x%x, want 0x%x", tt.typeName, kt.mods, tt.wantMods)
+		}
+	}
+}

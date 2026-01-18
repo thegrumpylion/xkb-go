@@ -701,9 +701,18 @@ func (p *Parser) modifierNameToMask(name string, keymap *Keymap) ModMask {
 		return ModMod4
 	case "Mod5":
 		return ModMod5
+	// Common virtual modifier names and their standard real modifier mappings
+	case "Alt", "Meta":
+		return ModMod1
+	case "NumLock":
+		return ModMod2
+	case "Super", "Hyper":
+		return ModMod4
+	case "LevelThree", "ISO_Level3_Shift", "AltGr":
+		return ModMod5
 	default:
-		// Check virtual modifiers
-		if mask, ok := keymap.virtualMods[name]; ok {
+		// Check virtual modifiers (for custom mappings)
+		if mask, ok := keymap.virtualMods[name]; ok && mask != 0 {
 			return mask
 		}
 		return 0
