@@ -192,14 +192,46 @@ func (c *Context) NewKeymapFromString(text []byte, format KeymapFormat) (*Keymap
 	return keymap, nil
 }
 
+// NewKeymapFromFile loads and parses a keymap from a file.
+// The format parameter must be KeymapFormatTextV1.
+func (c *Context) NewKeymapFromFile(path string, format KeymapFormat) (*Keymap, error) {
+	if format != KeymapFormatTextV1 {
+		return nil, &Error{Op: "NewKeymapFromFile", Err: ErrUnsupportedFormat}
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, &Error{Op: "NewKeymapFromFile", Path: path, Err: err}
+	}
+
+	keymap, err := c.NewKeymapFromString(data, format)
+	if err != nil {
+		// Unwrap and rewrap with path info
+		if e, ok := err.(*Error); ok {
+			return nil, &Error{Op: "NewKeymapFromFile", Path: path, Err: e.Err}
+		}
+		return nil, &Error{Op: "NewKeymapFromFile", Path: path, Err: err}
+	}
+
+	return keymap, nil
+}
+
 // NewKeymapFromNames builds a keymap from RMLVO names.
 // This looks up the rules file and assembles keymap components.
 //
 // If names is nil, default values are used.
 // Empty fields in names fall back to defaults.
 func (c *Context) NewKeymapFromNames(names *RuleNames) (*Keymap, error) {
-	// TODO: Implement RMLVO compilation
-	return nil, &Error{Op: "NewKeymapFromNames", Err: ErrNotImplemented}
+	if names == nil {
+		names = &RuleNames{}
+	}
+
+	keymap, err := c.compileKeymap(names)
+	if err != nil {
+		return nil, &Error{Op: "NewKeymapFromNames", Err: err}
+	}
+
+	return keymap, nil
 }
 
 // NewComposeTableFromLocale loads a compose table for the given locale.

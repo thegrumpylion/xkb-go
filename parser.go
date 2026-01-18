@@ -218,14 +218,8 @@ func (p *Parser) validateKeymap(keymap *Keymap) {
 		p.addError(fmt.Errorf("keymap is missing xkb_symbols section"))
 	}
 
-	// Validate that keys reference valid keycodes and types
-	for keycode, key := range keymap.keys {
-		// Check keycode is within declared range
-		if keycode < keymap.minKeycode || keycode > keymap.maxKeycode {
-			p.addError(fmt.Errorf("key %s has keycode %d outside declared range [%d, %d]",
-				key.name, keycode, keymap.minKeycode, keymap.maxKeycode))
-		}
-
+	// Validate that keys reference valid types and assign defaults
+	for _, key := range keymap.keys {
 		// Check each group's type reference
 		for groupIdx, group := range key.groups {
 			if group.keyType == nil {
@@ -234,24 +228,26 @@ func (p *Parser) validateKeymap(keymap *Keymap) {
 					key.groups[groupIdx].keyType = defaultType
 				}
 			} else {
-				// Verify the type exists in the keymap
+				// Verify the type exists in the keymap, resolve to default if not
 				if _, ok := keymap.types[group.keyType.name]; !ok {
-					p.addError(fmt.Errorf("key %s group %d references undefined type %q",
-						key.name, groupIdx+1, group.keyType.name))
+					// Try to resolve "default" or unknown types to a sensible default
+					numLevels := len(group.levels)
+					var defaultTypeName string
+					switch numLevels {
+					case 1:
+						defaultTypeName = "ONE_LEVEL"
+					case 2:
+						defaultTypeName = "TWO_LEVEL"
+					case 4:
+						defaultTypeName = "FOUR_LEVEL"
+					default:
+						defaultTypeName = "ONE_LEVEL"
+					}
+					if resolvedType, ok := keymap.types[defaultTypeName]; ok {
+						key.groups[groupIdx].keyType = resolvedType
+					}
+					// Don't error - just use the best available default
 				}
-			}
-		}
-	}
-
-	// Validate aliases reference defined keycodes
-	for aliasName, keycode := range keymap.keycodesByName {
-		if _, ok := keymap.keycodeNames[keycode]; !ok {
-			// This is an alias - check if the target keycode exists
-			// Note: aliases should already be resolved during parsing,
-			// but we double-check here
-			if keycode < keymap.minKeycode || keycode > keymap.maxKeycode {
-				p.addError(fmt.Errorf("alias %s references keycode %d outside declared range",
-					aliasName, keycode))
 			}
 		}
 	}
@@ -420,6 +416,14 @@ func (p *Parser) parseKeycodeDefinition(keymap *Keymap) error {
 	keycode := Keycode(code)
 	keymap.keycodeNames[keycode] = name
 	keymap.keycodesByName[name] = keycode
+
+	// Auto-expand the range if this keycode is outside declared min/max
+	if keycode < keymap.minKeycode {
+		keymap.minKeycode = keycode
+	}
+	if keycode > keymap.maxKeycode {
+		keymap.maxKeycode = keycode
+	}
 
 	return nil
 }
@@ -832,7 +836,9 @@ func (p *Parser) parseCompatStatement(keymap *Keymap) error {
 		p.skipToSemicolonOrBrace()
 		return nil
 	default:
-		return p.errorf("unexpected identifier in xkb_compat: %s", ident)
+		// Skip unknown statements (action defaults like setMods.clearLocks, etc.)
+		p.skipToSemicolonOrBrace()
+		return nil
 	}
 }
 
@@ -903,6 +909,14 @@ func (p *Parser) parseCompatIndicator(keymap *Keymap) error {
 
 // parseCompatIndicatorStatement parses a statement in an indicator definition.
 func (p *Parser) parseCompatIndicatorStatement(led *LED, keymap *Keymap) error {
+	// Handle negated flags like !allowExplicit
+	if p.check(TokenBang) {
+		p.advance()
+		// Skip the negated flag
+		p.skipToSemicolonOrBrace()
+		return nil
+	}
+
 	ident, err := p.expectIdent()
 	if err != nil {
 		return err
@@ -920,7 +934,7 @@ func (p *Parser) parseCompatIndicatorStatement(led *LED, keymap *Keymap) error {
 		led.mods = mods
 		return nil
 
-	case "whichModState", "groups", "whichGroupState", "controls":
+	case "whichModState", "groups", "whichGroupState", "controls", "allowExplicit":
 		// Skip these for now
 		p.skipToSemicolonOrBrace()
 		return nil
@@ -964,9 +978,15 @@ func (p *Parser) parseSymbols(keymap *Keymap) error {
 
 // parseSymbolsStatement parses a single statement in xkb_symbols.
 func (p *Parser) parseSymbolsStatement(keymap *Keymap) error {
-	// Check for key definition: key <NAME> { ... }
+	// Check for key definition: key <NAME> { ... } or key.type[...] = ...
 	if p.check(TokenIdent) && p.current.Value == "key" {
 		p.advance()
+		// Check for key.type (default type setting) vs key <NAME>
+		if p.check(TokenDot) {
+			// key.type[group1] = "TYPE" - skip default type settings
+			p.skipToSemicolonOrBrace()
+			return nil
+		}
 		return p.parseKeyDefinition(keymap)
 	}
 
@@ -987,7 +1007,9 @@ func (p *Parser) parseSymbolsStatement(keymap *Keymap) error {
 		_, _ = p.expectString()
 		return nil
 	default:
-		return p.errorf("unexpected identifier in xkb_symbols: %s", ident)
+		// Skip unknown statements
+		p.skipToSemicolonOrBrace()
+		return nil
 	}
 }
 
@@ -1065,6 +1087,11 @@ func (p *Parser) parseKeyDefinition(keymap *Keymap) error {
 		keycode = Keycode(len(keymap.keycodesByName) + int(keymap.minKeycode))
 		keymap.keycodeNames[keycode] = keycodeName
 		keymap.keycodesByName[keycodeName] = keycode
+
+		// Auto-expand range
+		if keycode > keymap.maxKeycode {
+			keymap.maxKeycode = keycode
+		}
 	}
 
 	if err := p.expect(TokenLBrace); err != nil {

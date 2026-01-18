@@ -203,3 +203,120 @@ func TestKeymapContext(t *testing.T) {
 		t.Error("Context() should not return nil")
 	}
 }
+
+func TestKeymapGetAsString(t *testing.T) {
+	km := TestKeymap()
+
+	output, err := km.GetAsString(KeymapFormatTextV1)
+	if err != nil {
+		t.Fatalf("GetAsString failed: %v", err)
+	}
+
+	if output == "" {
+		t.Fatal("GetAsString returned empty string")
+	}
+
+	// Verify it contains expected sections
+	if !contains(output, "xkb_keymap") {
+		t.Error("Output should contain xkb_keymap")
+	}
+	if !contains(output, "xkb_keycodes") {
+		t.Error("Output should contain xkb_keycodes")
+	}
+	if !contains(output, "xkb_types") {
+		t.Error("Output should contain xkb_types")
+	}
+	if !contains(output, "xkb_compatibility") {
+		t.Error("Output should contain xkb_compatibility")
+	}
+	if !contains(output, "xkb_symbols") {
+		t.Error("Output should contain xkb_symbols")
+	}
+
+	// Verify it can be re-parsed
+	ctx := NewContext(ContextNoFlags)
+	reparsed, err := ctx.NewKeymapFromString([]byte(output), KeymapFormatTextV1)
+	if err != nil {
+		t.Fatalf("Failed to re-parse GetAsString output: %v", err)
+	}
+
+	// Verify reparsed keymap has same basic properties
+	if reparsed.MinKeycode() != km.MinKeycode() {
+		t.Errorf("Reparsed MinKeycode = %d, want %d", reparsed.MinKeycode(), km.MinKeycode())
+	}
+	if reparsed.MaxKeycode() != km.MaxKeycode() {
+		t.Errorf("Reparsed MaxKeycode = %d, want %d", reparsed.MaxKeycode(), km.MaxKeycode())
+	}
+	if reparsed.NumGroups() != km.NumGroups() {
+		t.Errorf("Reparsed NumGroups = %d, want %d", reparsed.NumGroups(), km.NumGroups())
+	}
+}
+
+func TestKeymapGetAsStringUnsupportedFormat(t *testing.T) {
+	km := TestKeymap()
+
+	_, err := km.GetAsString(KeymapFormat(99))
+	if err == nil {
+		t.Error("Expected error for unsupported format")
+	}
+}
+
+func TestKeymapGetAsStringRoundTrip(t *testing.T) {
+	// Load real keymap
+	ctx := NewContext(ContextNoFlags)
+	original, err := ctx.NewKeymapFromFile("testdata/us.xkb", KeymapFormatTextV1)
+	if err != nil {
+		t.Fatalf("Failed to load keymap: %v", err)
+	}
+
+	// Serialize
+	output, err := original.GetAsString(KeymapFormatTextV1)
+	if err != nil {
+		t.Fatalf("GetAsString failed: %v", err)
+	}
+
+	// Re-parse
+	reparsed, err := ctx.NewKeymapFromString([]byte(output), KeymapFormatTextV1)
+	if err != nil {
+		t.Fatalf("Failed to re-parse: %v", err)
+	}
+
+	// Verify key functionality is preserved
+	state1 := original.NewState()
+	state2 := reparsed.NewState()
+
+	// Test a few keys
+	testKeys := []Keycode{38, 24, 10, 36} // a, q, 1, Return
+	for _, kc := range testKeys {
+		sym1 := state1.KeyGetOneSym(kc)
+		sym2 := state2.KeyGetOneSym(kc)
+		if sym1 != sym2 {
+			t.Errorf("Key %d: original sym %#x != reparsed sym %#x", kc, sym1, sym2)
+		}
+	}
+
+	// Test with Shift
+	state1.UpdateMask(ModShift, 0, 0, 0, 0, 0)
+	state2.UpdateMask(ModShift, 0, 0, 0, 0, 0)
+
+	for _, kc := range testKeys {
+		sym1 := state1.KeyGetOneSym(kc)
+		sym2 := state2.KeyGetOneSym(kc)
+		if sym1 != sym2 {
+			t.Errorf("Key %d with Shift: original sym %#x != reparsed sym %#x", kc, sym1, sym2)
+		}
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsAt(s, substr))
+}
+
+func containsAt(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}

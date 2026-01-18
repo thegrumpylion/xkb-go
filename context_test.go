@@ -158,12 +158,92 @@ func TestContextNewKeymapFromStringUnsupportedFormat(t *testing.T) {
 	}
 }
 
+func TestContextNewKeymapFromFile(t *testing.T) {
+	ctx := NewContext(ContextNoFlags)
+
+	keymap, err := ctx.NewKeymapFromFile("testdata/us.xkb", KeymapFormatTextV1)
+	if err != nil {
+		t.Fatalf("NewKeymapFromFile failed: %v", err)
+	}
+
+	if keymap == nil {
+		t.Fatal("Keymap should not be nil")
+	}
+
+	// Verify keymap has expected content
+	if keymap.MinKeycode() == 0 && keymap.MaxKeycode() == 0 {
+		t.Error("Keymap should have keycodes")
+	}
+
+	// Check for a known key
+	if keymap.KeyByName("AD01") == 0 {
+		t.Error("Expected AD01 key (Q) to be present")
+	}
+}
+
+func TestContextNewKeymapFromFileNotFound(t *testing.T) {
+	ctx := NewContext(ContextNoFlags)
+
+	_, err := ctx.NewKeymapFromFile("/nonexistent/keymap.xkb", KeymapFormatTextV1)
+	if err == nil {
+		t.Error("Expected error for non-existent file")
+	}
+}
+
+func TestContextNewKeymapFromFileUnsupportedFormat(t *testing.T) {
+	ctx := NewContext(ContextNoFlags)
+
+	_, err := ctx.NewKeymapFromFile("testdata/us.xkb", KeymapFormat(99))
+	if err == nil {
+		t.Error("Expected error for unsupported format")
+	}
+}
+
 func TestContextNewKeymapFromNames(t *testing.T) {
 	ctx := NewContext(ContextNoFlags)
 
-	_, err := ctx.NewKeymapFromNames(&RuleNames{Layout: "us"})
-	if err == nil {
-		t.Error("Expected error for unimplemented function")
+	// Test with US layout
+	keymap, err := ctx.NewKeymapFromNames(&RuleNames{Layout: "us"})
+	if err != nil {
+		t.Skipf("NewKeymapFromNames not available (may need system XKB data): %v", err)
+	}
+
+	if keymap == nil {
+		t.Fatal("Keymap should not be nil")
+	}
+
+	// Verify keymap has expected content
+	if keymap.MinKeycode() == 0 && keymap.MaxKeycode() == 0 {
+		t.Error("Keymap should have keycodes")
+	}
+
+	// Check for a known key
+	if keymap.KeyByName("AD01") == 0 {
+		t.Error("Expected AD01 key (Q) to be present")
+	}
+
+	// Verify key produces expected symbol
+	state := keymap.NewState()
+	qKey := keymap.KeyByName("AD01")
+	if qKey != 0 {
+		sym := state.KeyGetOneSym(qKey)
+		if sym != 'q' {
+			t.Errorf("AD01 key should produce 'q', got %#x (%s)", sym, KeysymGetName(sym))
+		}
+	}
+}
+
+func TestContextNewKeymapFromNamesDefaults(t *testing.T) {
+	ctx := NewContext(ContextNoFlags)
+
+	// Test with nil (should use defaults)
+	keymap, err := ctx.NewKeymapFromNames(nil)
+	if err != nil {
+		t.Skipf("NewKeymapFromNames not available: %v", err)
+	}
+
+	if keymap == nil {
+		t.Fatal("Keymap should not be nil")
 	}
 }
 

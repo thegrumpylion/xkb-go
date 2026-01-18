@@ -41,8 +41,8 @@
 - [x] Benchmarks
 - [x] Tested with real system keymaps and compose files
 
-## Not Implemented
+## Keymap Building
 
-- [ ] RMLVO compilation (`NewKeymapFromNames`)
-- [ ] `NewKeymapFromFile`
-- [ ] `Keymap.GetAsString()`
+- [x] `NewKeymapFromFile()` - load keymap from XKB file
+- [x] `Keymap.GetAsString()` - serialize keymap to XKB text format
+- [x] RMLVO compilation (`NewKeymapFromNames`) - build keymap from rules

@@ -1,5 +1,10 @@
 package xkb
 
+import (
+	"fmt"
+	"strings"
+)
+
 // Keymap is an immutable compiled keyboard mapping.
 // It contains all information about keys, layouts, types, and modifiers.
 //
@@ -190,4 +195,269 @@ func (km *Keymap) NewState() *State {
 // Context returns the context this keymap was created from.
 func (km *Keymap) Context() *Context {
 	return km.ctx
+}
+
+// GetAsString serializes the keymap to XKB text format.
+// The format parameter must be KeymapFormatTextV1.
+func (km *Keymap) GetAsString(format KeymapFormat) (string, error) {
+	if format != KeymapFormatTextV1 {
+		return "", ErrUnsupportedFormat
+	}
+
+	var b strings.Builder
+
+	b.WriteString("xkb_keymap {\n")
+
+	// xkb_keycodes section
+	km.writeKeycodes(&b)
+
+	// xkb_types section
+	km.writeTypes(&b)
+
+	// xkb_compat section
+	km.writeCompat(&b)
+
+	// xkb_symbols section
+	km.writeSymbols(&b)
+
+	b.WriteString("};\n")
+
+	return b.String(), nil
+}
+
+func (km *Keymap) writeKeycodes(b *strings.Builder) {
+	b.WriteString("xkb_keycodes {\n")
+	fmt.Fprintf(b, "\tminimum = %d;\n", km.minKeycode)
+	fmt.Fprintf(b, "\tmaximum = %d;\n", km.maxKeycode)
+
+	// Output keycode names sorted by keycode
+	for kc := km.minKeycode; kc <= km.maxKeycode; kc++ {
+		if name, ok := km.keycodeNames[kc]; ok {
+			fmt.Fprintf(b, "\t<%s> = %d;\n", name, kc)
+		}
+	}
+
+	// Output indicators (LEDs)
+	for name, led := range km.leds {
+		if led.index > 0 {
+			fmt.Fprintf(b, "\tindicator %d = \"%s\";\n", led.index, name)
+		}
+	}
+
+	b.WriteString("};\n\n")
+}
+
+func (km *Keymap) writeTypes(b *strings.Builder) {
+	b.WriteString("xkb_types {\n")
+
+	// Output virtual modifiers
+	if len(km.virtualMods) > 0 {
+		b.WriteString("\tvirtual_modifiers ")
+		first := true
+		for name := range km.virtualMods {
+			if !first {
+				b.WriteString(",")
+			}
+			b.WriteString(name)
+			first = false
+		}
+		b.WriteString(";\n\n")
+	}
+
+	// Output type definitions
+	for _, kt := range km.typesList {
+		fmt.Fprintf(b, "\ttype \"%s\" {\n", kt.name)
+
+		// Output modifiers
+		if kt.mods != 0 {
+			fmt.Fprintf(b, "\t\tmodifiers= %s;\n", km.modMaskToString(kt.mods))
+		} else {
+			b.WriteString("\t\tmodifiers= none;\n")
+		}
+
+		// Output map entries (convert 0-based internal levels to 1-based XKB format)
+		for _, entry := range kt.entries {
+			if entry.mods != 0 {
+				fmt.Fprintf(b, "\t\tmap[%s]= %d;\n", km.modMaskToString(entry.mods), entry.level+1)
+				if entry.preserve != 0 {
+					fmt.Fprintf(b, "\t\tpreserve[%s]= %s;\n", km.modMaskToString(entry.mods), km.modMaskToString(entry.preserve))
+				}
+			}
+		}
+
+		b.WriteString("\t};\n")
+	}
+
+	b.WriteString("};\n\n")
+}
+
+func (km *Keymap) writeCompat(b *strings.Builder) {
+	b.WriteString("xkb_compatibility {\n")
+
+	// Output virtual modifiers (same as types section)
+	if len(km.virtualMods) > 0 {
+		b.WriteString("\tvirtual_modifiers ")
+		first := true
+		for name := range km.virtualMods {
+			if !first {
+				b.WriteString(",")
+			}
+			b.WriteString(name)
+			first = false
+		}
+		b.WriteString(";\n\n")
+	}
+
+	// Output indicators
+	for name, led := range km.leds {
+		fmt.Fprintf(b, "\tindicator \"%s\" {\n", name)
+		if led.mods != 0 {
+			fmt.Fprintf(b, "\t\tmodifiers= %s;\n", km.modMaskToString(led.mods))
+		}
+		if led.group != 0 {
+			fmt.Fprintf(b, "\t\tgroups= %d;\n", led.group)
+		}
+		b.WriteString("\t};\n")
+	}
+
+	b.WriteString("};\n\n")
+}
+
+func (km *Keymap) writeSymbols(b *strings.Builder) {
+	b.WriteString("xkb_symbols {\n")
+
+	// Output group names
+	for i, name := range km.groupNames {
+		if name != "" {
+			fmt.Fprintf(b, "\tname[%d]=\"%s\";\n", i+1, name)
+		}
+	}
+	if len(km.groupNames) > 0 {
+		b.WriteString("\n")
+	}
+
+	// Output keys sorted by keycode
+	for kc := km.minKeycode; kc <= km.maxKeycode; kc++ {
+		key, ok := km.keys[kc]
+		if !ok {
+			continue
+		}
+
+		name := km.keycodeNames[kc]
+		if name == "" {
+			continue
+		}
+
+		// Check if key has explicit type or just default symbols
+		hasExplicitType := false
+		for _, grp := range key.groups {
+			if grp.keyType != nil && grp.keyType.name != "" {
+				hasExplicitType = true
+				break
+			}
+		}
+
+		if hasExplicitType || len(key.groups) > 1 {
+			// Multi-line format for complex keys
+			fmt.Fprintf(b, "\tkey <%s> {\n", name)
+			for gi, grp := range key.groups {
+				if grp.keyType != nil && grp.keyType.name != "" {
+					fmt.Fprintf(b, "\t\ttype= \"%s\",\n", grp.keyType.name)
+				}
+				syms := km.groupSymsToString(grp)
+				fmt.Fprintf(b, "\t\tsymbols[%d]= [ %s ]\n", gi+1, syms)
+			}
+			b.WriteString("\t};\n")
+		} else if len(key.groups) == 1 {
+			// Single-line format for simple keys
+			syms := km.groupSymsToString(key.groups[0])
+			fmt.Fprintf(b, "\tkey <%s> { [ %s ] };\n", name, syms)
+		}
+	}
+
+	// Output modifier_map
+	for i, modName := range km.modNames {
+		if modName == "" {
+			continue
+		}
+		modMask := ModMask(1 << i)
+		var keys []string
+		for kc := km.minKeycode; kc <= km.maxKeycode; kc++ {
+			if key, ok := km.keys[kc]; ok {
+				if key.vmodmap&modMask != 0 {
+					if name := km.keycodeNames[kc]; name != "" {
+						keys = append(keys, "<"+name+">")
+					}
+				}
+			}
+		}
+		if len(keys) > 0 {
+			fmt.Fprintf(b, "\tmodifier_map %s { %s };\n", modName, strings.Join(keys, ", "))
+		}
+	}
+
+	b.WriteString("};\n")
+}
+
+func (km *Keymap) modMaskToString(mask ModMask) string {
+	if mask == 0 {
+		return "none"
+	}
+
+	var parts []string
+
+	// Check real modifiers
+	realModNames := []string{"Shift", "Lock", "Control", "Mod1", "Mod2", "Mod3", "Mod4", "Mod5"}
+	for i, name := range realModNames {
+		if mask&(1<<i) != 0 {
+			// Check if we have a custom name
+			if km.modNames[i] != "" {
+				parts = append(parts, km.modNames[i])
+			} else {
+				parts = append(parts, name)
+			}
+		}
+	}
+
+	// Check virtual modifiers
+	for vmodName, vmodMask := range km.virtualMods {
+		if mask&vmodMask != 0 {
+			// Check if already covered by real mod
+			alreadyCovered := false
+			for i := 0; i < 8; i++ {
+				if vmodMask&(1<<i) != 0 && mask&(1<<i) != 0 {
+					alreadyCovered = true
+					break
+				}
+			}
+			if !alreadyCovered {
+				parts = append(parts, vmodName)
+			}
+		}
+	}
+
+	if len(parts) == 0 {
+		return "none"
+	}
+
+	return strings.Join(parts, "+")
+}
+
+func (km *Keymap) groupSymsToString(grp KeyGroup) string {
+	var syms []string
+	for _, lvl := range grp.levels {
+		if len(lvl.syms) == 0 {
+			syms = append(syms, "NoSymbol")
+		} else if len(lvl.syms) == 1 {
+			syms = append(syms, KeysymGetName(lvl.syms[0]))
+		} else {
+			// Multiple syms at one level (rare)
+			var multiSyms []string
+			for _, s := range lvl.syms {
+				multiSyms = append(multiSyms, KeysymGetName(s))
+			}
+			syms = append(syms, "{ "+strings.Join(multiSyms, ", ")+" }")
+		}
+	}
+	return strings.Join(syms, ", ")
 }
