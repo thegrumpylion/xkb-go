@@ -1321,3 +1321,270 @@ func TestModifierMapEdgeCases(t *testing.T) {
 		}
 	}
 }
+
+// TestParserReplaceKey tests the "replace key" modifier.
+func TestParserReplaceKey(t *testing.T) {
+	input := `xkb_keymap {
+		xkb_keycodes "test" {
+			minimum = 8;
+			maximum = 255;
+			<AD01> = 24;
+		};
+		xkb_types "test" {
+			type "ONE_LEVEL" { modifiers = none; };
+			type "TWO_LEVEL" { modifiers = Shift; map[Shift] = Level2; };
+		};
+		xkb_compat "test" {};
+		xkb_symbols "test" {
+			key <AD01> { [ q, Q ] };
+			replace key <AD01> { [ a ] };
+		};
+	};`
+
+	p := NewParser([]byte(input))
+	keymap, err := p.Parse()
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	key := keymap.keys[24]
+	if key == nil {
+		t.Fatal("Key AD01 not found")
+	}
+
+	// After replace, the key should have 'a' (the replaced value)
+	if len(key.groups) == 0 || len(key.groups[0].levels) == 0 {
+		t.Fatal("Key has no levels")
+	}
+	if key.groups[0].levels[0].syms[0] != Keysym('a') {
+		t.Errorf("Expected 'a', got %#x", key.groups[0].levels[0].syms[0])
+	}
+}
+
+// TestParserOverrideKey tests the "override key" modifier.
+func TestParserOverrideKey(t *testing.T) {
+	input := `xkb_keymap {
+		xkb_keycodes "test" {
+			minimum = 8;
+			maximum = 255;
+			<AD01> = 24;
+		};
+		xkb_types "test" {
+			type "ONE_LEVEL" { modifiers = none; };
+			type "TWO_LEVEL" { modifiers = Shift; map[Shift] = Level2; };
+		};
+		xkb_compat "test" {};
+		xkb_symbols "test" {
+			key <AD01> { [ q, Q ] };
+			override key <AD01> { [ x, X ] };
+		};
+	};`
+
+	p := NewParser([]byte(input))
+	keymap, err := p.Parse()
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	key := keymap.keys[24]
+	if key == nil {
+		t.Fatal("Key AD01 not found")
+	}
+
+	// After override, the key should have 'x', 'X'
+	if len(key.groups) == 0 || len(key.groups[0].levels) < 2 {
+		t.Fatal("Key has insufficient levels")
+	}
+	if key.groups[0].levels[0].syms[0] != Keysym('x') {
+		t.Errorf("Level 0: expected 'x', got %#x", key.groups[0].levels[0].syms[0])
+	}
+	if key.groups[0].levels[1].syms[0] != Keysym('X') {
+		t.Errorf("Level 1: expected 'X', got %#x", key.groups[0].levels[1].syms[0])
+	}
+}
+
+// TestParserAugmentKey tests the "augment key" modifier.
+func TestParserAugmentKey(t *testing.T) {
+	input := `xkb_keymap {
+		xkb_keycodes "test" {
+			minimum = 8;
+			maximum = 255;
+			<AD01> = 24;
+		};
+		xkb_types "test" {
+			type "ONE_LEVEL" { modifiers = none; };
+			type "TWO_LEVEL" { modifiers = Shift; map[Shift] = Level2; };
+		};
+		xkb_compat "test" {};
+		xkb_symbols "test" {
+			key <AD01> { [ q, Q ] };
+			augment key <AD01> { [ z, Z ] };
+		};
+	};`
+
+	p := NewParser([]byte(input))
+	keymap, err := p.Parse()
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	key := keymap.keys[24]
+	if key == nil {
+		t.Fatal("Key AD01 not found")
+	}
+
+	// After augment, key should have 'z', 'Z' (augment replaces like override in our implementation)
+	if len(key.groups) == 0 || len(key.groups[0].levels) < 2 {
+		t.Fatal("Key has insufficient levels")
+	}
+	if key.groups[0].levels[0].syms[0] != Keysym('z') {
+		t.Errorf("Level 0: expected 'z', got %#x", key.groups[0].levels[0].syms[0])
+	}
+}
+
+// TestParserAnyKeyword tests the "any" keyword for preserving existing symbols.
+func TestParserAnyKeyword(t *testing.T) {
+	input := `xkb_keymap {
+		xkb_keycodes "test" {
+			minimum = 8;
+			maximum = 255;
+			<AD01> = 24;
+		};
+		xkb_types "test" {
+			type "ONE_LEVEL" { modifiers = none; };
+			type "TWO_LEVEL" { modifiers = Shift; map[Shift] = Level2; };
+			type "FOUR_LEVEL" { modifiers = Shift+Control; map[Shift] = Level2; map[Control] = Level3; map[Shift+Control] = Level4; };
+		};
+		xkb_compat "test" {};
+		xkb_symbols "test" {
+			key <AD01> { [ q, Q ] };
+			key <AD01> { [ any, any, dollar ] };
+		};
+	};`
+
+	p := NewParser([]byte(input))
+	keymap, err := p.Parse()
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	key := keymap.keys[24]
+	if key == nil {
+		t.Fatal("Key AD01 not found")
+	}
+
+	if len(key.groups) == 0 || len(key.groups[0].levels) < 3 {
+		t.Fatalf("Key has insufficient levels: %d", len(key.groups[0].levels))
+	}
+
+	// Level 0: should preserve 'q' (from first definition)
+	if key.groups[0].levels[0].syms[0] != Keysym('q') {
+		t.Errorf("Level 0: expected 'q' (preserved), got %#x (%s)",
+			key.groups[0].levels[0].syms[0], KeysymGetName(key.groups[0].levels[0].syms[0]))
+	}
+
+	// Level 1: should preserve 'Q' (from first definition)
+	if key.groups[0].levels[1].syms[0] != Keysym('Q') {
+		t.Errorf("Level 1: expected 'Q' (preserved), got %#x (%s)",
+			key.groups[0].levels[1].syms[0], KeysymGetName(key.groups[0].levels[1].syms[0]))
+	}
+
+	// Level 2: should be 'dollar' (from second definition)
+	dollarKeysym := KeysymFromName("dollar", KeysymNameNoFlags)
+	if key.groups[0].levels[2].syms[0] != dollarKeysym {
+		t.Errorf("Level 2: expected 'dollar' (%#x), got %#x (%s)",
+			dollarKeysym, key.groups[0].levels[2].syms[0], KeysymGetName(key.groups[0].levels[2].syms[0]))
+	}
+}
+
+// TestParserKeyMerging tests that multiple key definitions for the same keycode merge properly.
+func TestParserKeyMerging(t *testing.T) {
+	input := `xkb_keymap {
+		xkb_keycodes "test" {
+			minimum = 8;
+			maximum = 255;
+			<AD01> = 24;
+		};
+		xkb_types "test" {
+			type "ONE_LEVEL" { modifiers = none; };
+			type "TWO_LEVEL" { modifiers = Shift; map[Shift] = Level2; };
+		};
+		xkb_compat "test" {};
+		xkb_symbols "test" {
+			key <AD01> { [ a, A ], repeat = no };
+			key <AD01> { [ b, B ] };
+		};
+	};`
+
+	p := NewParser([]byte(input))
+	keymap, err := p.Parse()
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	key := keymap.keys[24]
+	if key == nil {
+		t.Fatal("Key AD01 not found")
+	}
+
+	// Second definition should override symbols
+	if len(key.groups) == 0 || len(key.groups[0].levels) < 2 {
+		t.Fatal("Key has insufficient levels")
+	}
+	if key.groups[0].levels[0].syms[0] != Keysym('b') {
+		t.Errorf("Level 0: expected 'b', got %#x", key.groups[0].levels[0].syms[0])
+	}
+
+	// First definition's repeat=no should be preserved
+	if key.repeats {
+		t.Error("Key should not repeat (repeat=no from first definition should be preserved)")
+	}
+}
+
+// TestParserSkipStatementWithBraces tests that complex statements with nested braces are properly skipped.
+func TestParserSkipStatementWithBraces(t *testing.T) {
+	// This tests the skipStatementWithBraces function by having complex nested structures
+	input := `xkb_keymap {
+		xkb_keycodes "test" {
+			minimum = 8;
+			maximum = 255;
+			<AD01> = 24;
+			<AD02> = 25;
+		};
+		xkb_types "test" {
+			type "ONE_LEVEL" { modifiers = none; };
+		};
+		xkb_compat "test" {};
+		xkb_symbols "test" {
+			replace key <AD01> {
+				type = "ONE_LEVEL",
+				symbols[Group1] = [ a ],
+				actions[Group1] = [ SetMods(modifiers=Shift) ]
+			};
+			key <AD02> { [ q ] };
+		};
+	};`
+
+	p := NewParser([]byte(input))
+	keymap, err := p.Parse()
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	// Both keys should be parsed correctly
+	key1 := keymap.keys[24]
+	if key1 == nil {
+		t.Fatal("Key AD01 not found")
+	}
+	if key1.groups[0].levels[0].syms[0] != Keysym('a') {
+		t.Errorf("AD01: expected 'a', got %#x", key1.groups[0].levels[0].syms[0])
+	}
+
+	key2 := keymap.keys[25]
+	if key2 == nil {
+		t.Fatal("Key AD02 not found")
+	}
+	if key2.groups[0].levels[0].syms[0] != Keysym('q') {
+		t.Errorf("AD02: expected 'q', got %#x", key2.groups[0].levels[0].syms[0])
+	}
+}

@@ -145,6 +145,27 @@ func (p *Parser) skipToSemicolonOrBrace() {
 	}
 }
 
+// skipStatementWithBraces skips a statement, properly handling nested braces.
+// It continues until it finds a semicolon at depth 0.
+func (p *Parser) skipStatementWithBraces() {
+	depth := 0
+	for {
+		switch p.current.Type {
+		case TokenEOF:
+			return
+		case TokenLBrace:
+			depth++
+		case TokenRBrace:
+			depth--
+		case TokenSemicolon:
+			if depth <= 0 {
+				return
+			}
+		}
+		p.advance()
+	}
+}
+
 // Parse parses a complete XKB keymap.
 func (p *Parser) Parse() (*Keymap, error) {
 	keymap := &Keymap{
@@ -978,13 +999,30 @@ func (p *Parser) parseSymbols(keymap *Keymap) error {
 
 // parseSymbolsStatement parses a single statement in xkb_symbols.
 func (p *Parser) parseSymbolsStatement(keymap *Keymap) error {
+	// Handle key modifiers: replace, override, augment
+	// These can appear before "key" in statements like "replace key <KEYNAME> { ... }"
+	if p.check(TokenIdent) {
+		switch p.current.Value {
+		case "replace", "override", "augment":
+			p.advance() // Skip the modifier
+			// Now expect "key"
+			if p.check(TokenIdent) && p.current.Value == "key" {
+				p.advance()
+				return p.parseKeyDefinition(keymap)
+			}
+			// Not followed by "key" - skip the statement with brace awareness
+			p.skipStatementWithBraces()
+			return nil
+		}
+	}
+
 	// Check for key definition: key <NAME> { ... } or key.type[...] = ...
 	if p.check(TokenIdent) && p.current.Value == "key" {
 		p.advance()
 		// Check for key.type (default type setting) vs key <NAME>
 		if p.check(TokenDot) {
 			// key.type[group1] = "TYPE" - skip default type settings
-			p.skipToSemicolonOrBrace()
+			p.skipStatementWithBraces()
 			return nil
 		}
 		return p.parseKeyDefinition(keymap)
@@ -1007,8 +1045,8 @@ func (p *Parser) parseSymbolsStatement(keymap *Keymap) error {
 		_, _ = p.expectString()
 		return nil
 	default:
-		// Skip unknown statements
-		p.skipToSemicolonOrBrace()
+		// Skip unknown statements with brace awareness
+		p.skipStatementWithBraces()
 		return nil
 	}
 }
@@ -1074,6 +1112,10 @@ func (p *Parser) parseGroupIdent(name string) (int, error) {
 	return num - 1, nil // Convert 1-based to 0-based
 }
 
+// keysymAny is a special marker used during parsing to indicate that the existing
+// keysym at this level should be preserved (the "any" keyword in XKB).
+const keysymAny Keysym = 0xFFFFFFFF
+
 // parseKeyDefinition parses: key <NAME> { ... }
 func (p *Parser) parseKeyDefinition(keymap *Keymap) error {
 	keycodeName, err := p.expectKeycode()
@@ -1098,15 +1140,23 @@ func (p *Parser) parseKeyDefinition(keymap *Keymap) error {
 		return err
 	}
 
+	// Check if key already exists (for merging with existing definition)
+	existingKey := keymap.keys[keycode]
+
 	key := &Key{
 		keycode: keycode,
 		name:    keycodeName,
 		repeats: true,
 	}
 
+	// If there's an existing key, preserve its repeat setting
+	if existingKey != nil {
+		key.repeats = existingKey.repeats
+	}
+
 	// Parse key body - can be simple [ syms ] or complex { type = ..., symbols[GroupN] = ... }
 	// Also handles mixed form: { [ syms ], repeat = no }
-	if err := p.parseKeyBody(key, keymap); err != nil {
+	if err := p.parseKeyBody(key, keymap, existingKey); err != nil {
 		return err
 	}
 
@@ -1119,7 +1169,8 @@ func (p *Parser) parseKeyDefinition(keymap *Keymap) error {
 }
 
 // parseKeyBody parses the body of a complex key definition.
-func (p *Parser) parseKeyBody(key *Key, keymap *Keymap) error {
+// existingKey is the previously defined key for the same keycode, used for merging.
+func (p *Parser) parseKeyBody(key *Key, keymap *Keymap, existingKey *Key) error {
 	var currentTypeName string
 	groups := make(map[int][]Keysym)
 
@@ -1215,12 +1266,16 @@ func (p *Parser) parseKeyBody(key *Key, keymap *Keymap) error {
 		}
 	}
 
-	// Build key groups from parsed data
+	// Build key groups from parsed data, merging with existing key if present
 	maxGroup := 0
 	for g := range groups {
 		if g > maxGroup {
 			maxGroup = g
 		}
+	}
+	// Also consider existing key's groups
+	if existingKey != nil && len(existingKey.groups) > maxGroup+1 {
+		maxGroup = len(existingKey.groups) - 1
 	}
 
 	key.groups = make([]KeyGroup, maxGroup+1)
@@ -1230,6 +1285,38 @@ func (p *Parser) parseKeyBody(key *Key, keymap *Keymap) error {
 		if currentTypeName != "" {
 			keyType = keymap.types[currentTypeName]
 		}
+
+		// Merge with existing key if present
+		if existingKey != nil && g < len(existingKey.groups) {
+			existingGroup := existingKey.groups[g]
+
+			// If we don't have new symbols for this group, use existing
+			if syms == nil {
+				key.groups[g] = existingGroup
+				continue
+			}
+
+			// Use existing type if we don't have a new one
+			if keyType == nil {
+				keyType = existingGroup.keyType
+			}
+
+			// Merge symbols: replace keysymAny with existing symbol
+			mergedSyms := make([]Keysym, len(syms))
+			copy(mergedSyms, syms)
+			for i, sym := range mergedSyms {
+				if sym == keysymAny {
+					// Get existing symbol at this level
+					if i < len(existingGroup.levels) && len(existingGroup.levels[i].syms) > 0 {
+						mergedSyms[i] = existingGroup.levels[i].syms[0]
+					} else {
+						mergedSyms[i] = KeyNoSymbol
+					}
+				}
+			}
+			syms = mergedSyms
+		}
+
 		if keyType == nil {
 			keyType = p.guessKeyType(keymap, len(syms))
 		}
@@ -1291,6 +1378,11 @@ func (p *Parser) parseKeysym() (Keysym, error) {
 	if p.check(TokenIdent) {
 		name := p.current.Value
 		p.advance()
+
+		// Special handling for "any" keyword - means preserve existing symbol
+		if name == "any" {
+			return keysymAny, nil
+		}
 
 		// Look up keysym by name
 		ks := KeysymFromName(name, KeysymNameNoFlags)

@@ -57,12 +57,6 @@ var testLayouts = []struct {
 func TestIntegration_RMLVOLayouts(t *testing.T) {
 	ctx := NewContext(ContextNoFlags)
 
-	// Known layouts that have parser issues (use unsupported features)
-	knownProblematic := map[string]bool{
-		"de_neo": true, // Uses modifier_map in compat section
-		"ch_fr":  true, // Uses override section
-	}
-
 	for _, tc := range testLayouts {
 		name := tc.layout
 		if tc.variant != "" {
@@ -75,9 +69,6 @@ func TestIntegration_RMLVOLayouts(t *testing.T) {
 				Variant: tc.variant,
 			})
 			if err != nil {
-				if knownProblematic[name] {
-					t.Skipf("Known issue - %s: %v", tc.desc, err)
-				}
 				t.Fatalf("Failed to compile %s: %v", tc.desc, err)
 			}
 
@@ -104,8 +95,7 @@ func TestIntegration_RMLVOLayouts(t *testing.T) {
 			if qKey != 0 {
 				sym := state.KeyGetOneSym(qKey)
 				if sym == 0 {
-					// Some layouts (like Greek) have different key mappings
-					t.Logf("AD01 key produces no symbol (may be expected for %s)", tc.layout)
+					t.Errorf("AD01 key produces no symbol")
 				}
 			}
 		})
@@ -531,14 +521,17 @@ func TestIntegration_KeyRepeat(t *testing.T) {
 		}
 	}
 
-	// Modifier keys typically should not repeat, but this depends on keymap config
-	// The XKB file may or may not set repeat=false for modifier keys
+	// Modifier keys typically should not repeat in XKB because the compat section
+	// has "interpret.repeat = False" which affects keys matched by interpret statements.
+	// However, our parser doesn't yet implement full compat interpret handling,
+	// so modifier keys may incorrectly have repeat=true.
+	// TODO: Implement interpret.repeat handling in compat section parsing
 	noRepeatKeys := []string{"LFSH", "RTSH", "LCTL", "RCTL", "CAPS"}
 	for _, name := range noRepeatKeys {
 		kc := keymap.KeyByName(name)
 		if kc != 0 && keymap.KeyRepeats(kc) {
-			// Log instead of fail - keymap may have repeat enabled for modifiers
-			t.Logf("Key %s has repeat enabled (typically unexpected for modifier)", name)
+			// Log as known limitation rather than failing
+			t.Logf("Key %s has repeat=true (expected false, but compat interpret.repeat not yet implemented)", name)
 		}
 	}
 }
