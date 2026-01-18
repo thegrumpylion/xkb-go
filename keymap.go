@@ -449,15 +449,28 @@ func (km *Keymap) groupSymsToString(grp KeyGroup) string {
 		if len(lvl.syms) == 0 {
 			syms = append(syms, "NoSymbol")
 		} else if len(lvl.syms) == 1 {
-			syms = append(syms, KeysymGetName(lvl.syms[0]))
+			syms = append(syms, keysymToStr(lvl.syms[0]))
 		} else {
 			// Multiple syms at one level (rare)
 			var multiSyms []string
 			for _, s := range lvl.syms {
-				multiSyms = append(multiSyms, KeysymGetName(s))
+				multiSyms = append(multiSyms, keysymToStr(s))
 			}
 			syms = append(syms, "{ "+strings.Join(multiSyms, ", ")+" }")
 		}
 	}
 	return strings.Join(syms, ", ")
+}
+
+// keysymToStr returns the string representation of a keysym for serialization.
+// Returns the name if known, otherwise returns hex format.
+func keysymToStr(ks Keysym) string {
+	if ks == KeyNoSymbol {
+		return "NoSymbol"
+	}
+	if name := KeysymGetName(ks); name != "" {
+		return name
+	}
+	// Unknown keysym - output as hex
+	return fmt.Sprintf("0x%x", ks)
 }

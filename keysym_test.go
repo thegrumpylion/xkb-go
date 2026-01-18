@@ -66,7 +66,7 @@ func TestUTF32ToKeysym(t *testing.T) {
 		{"uppercase A", 'A', Keysym('A')},
 		{"space", ' ', Keysym(' ')},
 		{"Latin-1 ä", 'ä', Keysym(0xe4)},
-		{"Extended char (Unicode keysym)", 'α', Keysym(0x010003b1)}, // Greek alpha
+		{"Greek alpha (has specific keysym)", 'α', KeyGreekAlpha}, // 0x07e1
 		{"Emoji (Unicode keysym)", '😀', Keysym(0x0101f600)},
 	}
 

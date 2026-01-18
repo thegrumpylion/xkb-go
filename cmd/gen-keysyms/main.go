@@ -15,10 +15,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 type keysym struct {
 	name    string
+	goConst string // Go constant name (e.g., "KeyBackSpace")
 	value   uint32
 	unicode rune // 0 if no unicode mapping
 	comment string
@@ -49,6 +51,48 @@ var (
 	// deprecated alias
 	deprecatedAliasRE = regexp.MustCompile(`deprecated alias`)
 )
+
+// toGoConstName converts XK_ names to Go-style Key* constants.
+// Examples:
+//
+//	"BackSpace" -> "KeyBackSpace"
+//	"KP_Space" -> "KeyKPSpace"
+//	"Shift_L" -> "KeyShiftL"
+//	"dead_acute" -> "KeyDeadAcute"
+//	"space" -> "KeySpace"
+//	"a" -> "" (skip single letters)
+//	"0" -> "" (skip digits)
+func toGoConstName(name string) string {
+	// Skip single ASCII characters (a-z, A-Z, 0-9) - they're accessed as Keysym('a')
+	if len(name) == 1 {
+		return ""
+	}
+
+	// Skip digit names like "0", "1", etc.
+	if len(name) == 1 && name[0] >= '0' && name[0] <= '9' {
+		return ""
+	}
+
+	// Convert to PascalCase, removing underscores
+	var result strings.Builder
+	result.WriteString("Key")
+
+	capitalizeNext := true
+	for _, r := range name {
+		if r == '_' {
+			capitalizeNext = true
+			continue
+		}
+		if capitalizeNext {
+			result.WriteRune(unicode.ToUpper(r))
+			capitalizeNext = false
+		} else {
+			result.WriteRune(r)
+		}
+	}
+
+	return result.String()
+}
 
 func parseHeader(path, prefix string, keysyms map[uint32]keysym, aliases map[string]uint32) {
 	file, err := os.Open(path)
@@ -99,6 +143,7 @@ func parseHeader(path, prefix string, keysyms map[uint32]keysym, aliases map[str
 
 		ks := keysym{
 			name:    goName,
+			goConst: toGoConstName(goName),
 			value:   uint32(value),
 			unicode: unicode,
 			comment: comment,
@@ -116,7 +161,11 @@ func parseHeader(path, prefix string, keysyms map[uint32]keysym, aliases map[str
 		}
 
 		// Store all names (including aliases) for name->value lookup
-		aliases[goName] = uint32(value)
+		// Don't overwrite existing entries - this prevents XF86 keys from
+		// overwriting standard keysyms (e.g., XF86XK_Q overwriting 'Q')
+		if _, exists := aliases[goName]; !exists {
+			aliases[goName] = uint32(value)
+		}
 	}
 }
 
@@ -134,12 +183,50 @@ func generateCode(keysyms map[uint32]keysym, aliases map[string]uint32) {
 	}
 	sort.Slice(values, func(i, j int) bool { return values[i] < values[j] })
 
-	// Generate keysymNames map
-	fmt.Println("// generatedKeysymNames maps keysym values to canonical names.")
-	fmt.Println("var generatedKeysymNames = map[Keysym]string{")
+	// Generate keysym constants
+	fmt.Println("// Keysym constants generated from X11 header files.")
+	fmt.Println("const (")
+	fmt.Println("\tKeyNoSymbol Keysym = 0")
+	fmt.Println()
+
+	// Track used constant names to avoid duplicates
+	usedNames := make(map[string]bool)
+	usedNames["KeyNoSymbol"] = true
+
+	// Group constants by category based on value ranges
+	lastCategory := ""
 	for _, v := range values {
 		ks := keysyms[v]
-		// Skip very common ones that are in the manual table
+		if ks.goConst == "" {
+			continue // Skip single chars
+		}
+
+		// Skip if we've already generated this constant name
+		if usedNames[ks.goConst] {
+			continue
+		}
+		usedNames[ks.goConst] = true
+
+		// Add category comments
+		category := getCategory(v)
+		if category != lastCategory {
+			if lastCategory != "" {
+				fmt.Println()
+			}
+			fmt.Printf("\t// %s\n", category)
+			lastCategory = category
+		}
+
+		fmt.Printf("\t%s Keysym = 0x%04x\n", ks.goConst, v)
+	}
+	fmt.Println(")")
+	fmt.Println()
+
+	// Generate keysymNames map
+	fmt.Println("// keysymNames maps keysym values to canonical names.")
+	fmt.Println("var keysymNames = map[Keysym]string{")
+	for _, v := range values {
+		ks := keysyms[v]
 		fmt.Printf("\t0x%08x: %q,\n", v, ks.name)
 	}
 	fmt.Println("}")
@@ -153,8 +240,8 @@ func generateCode(keysyms map[uint32]keysym, aliases map[string]uint32) {
 	sort.Strings(names)
 
 	// Generate keysymsByName map
-	fmt.Println("// generatedKeysymsByName maps keysym names to values.")
-	fmt.Println("var generatedKeysymsByName = map[string]Keysym{")
+	fmt.Println("// keysymsByName maps keysym names to values.")
+	fmt.Println("var keysymsByName = map[string]Keysym{")
 	for _, n := range names {
 		v := aliases[n]
 		fmt.Printf("\t%q: 0x%08x,\n", n, v)
@@ -163,9 +250,9 @@ func generateCode(keysyms map[uint32]keysym, aliases map[string]uint32) {
 	fmt.Println()
 
 	// Generate unicode mapping for keysyms that have explicit unicode
-	fmt.Println("// generatedKeysymToUnicode maps keysyms to unicode codepoints.")
+	fmt.Println("// keysymToUnicode maps keysyms to unicode codepoints.")
 	fmt.Println("// Only includes keysyms with explicit unicode mappings in the headers.")
-	fmt.Println("var generatedKeysymToUnicode = map[Keysym]rune{")
+	fmt.Println("var keysymToUnicode = map[Keysym]rune{")
 	for _, v := range values {
 		ks := keysyms[v]
 		if ks.unicode != 0 {
@@ -186,4 +273,72 @@ func generateCode(keysyms map[uint32]keysym, aliases map[string]uint32) {
 		}
 	}
 	fmt.Println("}")
+}
+
+// getCategory returns a human-readable category for a keysym value
+func getCategory(v uint32) string {
+	switch {
+	case v >= 0x20 && v <= 0x7e:
+		return "Latin-1 (ASCII)"
+	case v >= 0xa0 && v <= 0xff:
+		return "Latin-1 Supplement"
+	case v >= 0x100 && v <= 0x1ff:
+		return "Latin Extended-A"
+	case v >= 0x200 && v <= 0x2ff:
+		return "Latin Extended-B"
+	case v >= 0x300 && v <= 0x3ff:
+		return "Latin Extended Additional"
+	case v >= 0x400 && v <= 0x4ff:
+		return "Katakana"
+	case v >= 0x500 && v <= 0x5ff:
+		return "Arabic"
+	case v >= 0x600 && v <= 0x6ff:
+		return "Cyrillic"
+	case v >= 0x700 && v <= 0x7ff:
+		return "Greek"
+	case v >= 0x800 && v <= 0x8ff:
+		return "Technical"
+	case v >= 0x900 && v <= 0x9ff:
+		return "Special"
+	case v >= 0xa00 && v <= 0xaff:
+		return "Publishing"
+	case v >= 0xb00 && v <= 0xbff:
+		return "APL"
+	case v >= 0xc00 && v <= 0xcff:
+		return "Hebrew"
+	case v >= 0xd00 && v <= 0xdff:
+		return "Thai"
+	case v >= 0xe00 && v <= 0xeff:
+		return "Korean"
+	case v >= 0x1000000 && v <= 0x110ffff:
+		return "Unicode"
+	case v >= 0xfe00 && v <= 0xfeff:
+		return "ISO 9995 / Dead Keys"
+	case v >= 0xff00 && v <= 0xff0f:
+		return "TTY Function Keys"
+	case v >= 0xff10 && v <= 0xff1f:
+		return "TTY Function Keys"
+	case v >= 0xff20 && v <= 0xff4f:
+		return "Misc Function Keys"
+	case v >= 0xff50 && v <= 0xff5f:
+		return "Cursor Control"
+	case v >= 0xff60 && v <= 0xff6f:
+		return "Misc Functions"
+	case v >= 0xff70 && v <= 0xff7f:
+		return "Japanese Keyboard"
+	case v >= 0xff80 && v <= 0xffbf:
+		return "Keypad"
+	case v >= 0xffc0 && v <= 0xffcf:
+		return "Function Keys (F1-F12)"
+	case v >= 0xffd0 && v <= 0xffdf:
+		return "Function Keys (F13-F35)"
+	case v >= 0xffe0 && v <= 0xffef:
+		return "Modifiers"
+	case v >= 0xfff0 && v <= 0xffff:
+		return "Keyboard (Alarm Keys)"
+	case v >= 0x1008ff00 && v <= 0x1008ffff:
+		return "XF86 Keys (Multimedia/Special)"
+	default:
+		return "Other"
+	}
 }

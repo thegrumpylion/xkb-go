@@ -480,7 +480,7 @@ func TestIntegration_SpecialKeys(t *testing.T) {
 		{"RTRN", KeyReturn},
 		{"TAB", KeyTab},
 		{"BKSP", KeyBackSpace},
-		{"SPCE", Keysym(' ')}, // space
+		{"SPCE", KeySpace},
 		{"CAPS", KeyCapsLock},
 		{"LFSH", KeyShiftL},
 		{"RTSH", KeyShiftR},
