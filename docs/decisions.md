@@ -135,26 +135,29 @@ ctx.SetLogger(myLogger)
 
 ## D8: Package Structure
 
-**Decision**: Single package `xkb` with internal sub-packages.
+**Decision**: Single flat package `xkb` with no sub-packages.
 
 ```
 github.com/thegrumpylion/xkb-go/
-├── xkb.go              # Public API
-├── keymap.go           # Keymap type
-├── state.go            # State type
-├── compose.go          # Compose types
-├── keysym.go           # Keysym utilities
-├── keysym_tables.go    # Generated tables
-├── internal/
-│   └── parser/         # Keymap parser (internal)
-└── cmd/
-    └── xkb-go/         # CLI tools (optional)
+├── types.go           # Core types (Keysym, Keycode, ModMask, etc.)
+├── keysym.go          # Keysym utilities and tables
+├── context.go         # Context, include paths, factory methods
+├── keymap.go          # Keymap struct and query methods
+├── state.go           # State machine for key translation
+├── lexer.go           # XKB text format tokenizer
+├── parser.go          # XKB keymap parser
+├── compose.go         # ComposeTable and ComposeState
+├── compose_parser.go  # Compose file parser
+├── errors.go          # Error types
+├── testing.go         # Test helpers
+└── docs/              # Documentation
 ```
 
 **Rationale**:
 - Simple import: `import "github.com/thegrumpylion/xkb-go"`
-- Parser is internal implementation detail
-- Follows Go conventions
+- Flat structure avoids circular import issues
+- All types accessible without internal packages
+- Parser is part of the public package (users may want to extend it)
 
 ---
 

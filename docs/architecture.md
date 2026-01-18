@@ -411,16 +411,17 @@ Flat package structure for simplicity (no circular imports, all types accessible
 
 ```
 github.com/thegrumpylion/xkb-go/
-├── context.go       # Context, include paths, logging
-├── keymap.go        # Keymap struct and methods
-├── state.go         # State struct and methods
-├── compose.go       # ComposeTable and ComposeState
-├── types.go         # Core types (Keysym, Keycode, ModMask, etc.)
-├── keysym.go        # Keysym utilities and tables
-├── lexer.go         # XKB text format tokenizer
-├── parser.go        # Grammar parser, AST building
-├── errors.go        # Error types with source locations
-├── testing.go       # Test helpers (TestKeymap, TestComposeTable)
+├── context.go         # Context, include paths, logging
+├── keymap.go          # Keymap struct and methods
+├── state.go           # State struct and methods
+├── compose.go         # ComposeTable and ComposeState
+├── compose_parser.go  # Compose file format parser
+├── types.go           # Core types (Keysym, Keycode, ModMask, etc.)
+├── keysym.go          # Keysym utilities and tables
+├── lexer.go           # XKB text format tokenizer
+├── parser.go          # XKB keymap grammar parser
+├── errors.go          # Error types with source locations
+├── testing.go         # Test helpers (TestKeymap, TestComposeTable)
 └── docs/
     ├── architecture.md
     ├── parser.md

@@ -1,9 +1,12 @@
 package xkb
 
 import (
+	"bufio"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -208,12 +211,130 @@ func (c *Context) NewKeymapFromNames(names *RuleNames) (*Keymap, error) {
 // 2. ~/.XCompose
 // 3. System locale compose file
 func (c *Context) NewComposeTableFromLocale(locale string, flags ComposeCompileFlags) (*ComposeTable, error) {
-	// TODO: Implement compose table loading
-	return nil, &Error{Op: "NewComposeTableFromLocale", Err: ErrNotImplemented}
+	// Normalize locale
+	if locale == "" {
+		locale = os.Getenv("LC_ALL")
+		if locale == "" {
+			locale = os.Getenv("LC_CTYPE")
+			if locale == "" {
+				locale = os.Getenv("LANG")
+				if locale == "" {
+					locale = "C"
+				}
+			}
+		}
+	}
+
+	// 1. Check XCOMPOSEFILE environment variable
+	if composePath := os.Getenv("XCOMPOSEFILE"); composePath != "" {
+		if _, err := os.Stat(composePath); err == nil {
+			return c.NewComposeTableFromFile(composePath, locale, flags)
+		}
+	}
+
+	// 2. Check ~/.XCompose
+	if home, err := os.UserHomeDir(); err == nil {
+		userCompose := filepath.Join(home, ".XCompose")
+		if _, err := os.Stat(userCompose); err == nil {
+			return c.NewComposeTableFromFile(userCompose, locale, flags)
+		}
+	}
+
+	// 3. Find system compose file for locale
+	composePath := c.findComposeFileForLocale(locale)
+	if composePath == "" {
+		return nil, &Error{Op: "NewComposeTableFromLocale", Err: fmt.Errorf("no compose file found for locale %s", locale)}
+	}
+
+	return c.NewComposeTableFromFile(composePath, locale, flags)
 }
 
 // NewComposeTableFromFile loads a compose table from a specific file.
 func (c *Context) NewComposeTableFromFile(path string, locale string, flags ComposeCompileFlags) (*ComposeTable, error) {
-	// TODO: Implement compose table loading
-	return nil, &Error{Op: "NewComposeTableFromFile", Err: ErrNotImplemented}
+	parser := newComposeParser(locale, c.IncludePaths())
+	if err := parser.parseFile(path); err != nil {
+		return nil, &Error{Op: "NewComposeTableFromFile", Err: err}
+	}
+
+	return parser.buildComposeTable(), nil
+}
+
+// findComposeFileForLocale finds the system compose file for a locale.
+func (c *Context) findComposeFileForLocale(locale string) string {
+	// Common locale directories
+	localeDirs := []string{
+		"/usr/share/X11/locale",
+		"/usr/local/share/X11/locale",
+	}
+
+	// Try direct path first (locale/Compose)
+	for _, baseDir := range localeDirs {
+		composePath := filepath.Join(baseDir, locale, "Compose")
+		if _, err := os.Stat(composePath); err == nil {
+			return composePath
+		}
+	}
+
+	// Try looking up in compose.dir
+	for _, baseDir := range localeDirs {
+		composeDirPath := filepath.Join(baseDir, "compose.dir")
+		mapping := c.parseComposeDir(composeDirPath)
+		if relPath, ok := mapping[locale]; ok {
+			composePath := filepath.Join(baseDir, relPath)
+			if _, err := os.Stat(composePath); err == nil {
+				return composePath
+			}
+		}
+
+		// Try without encoding suffix (e.g., "en_US" from "en_US.UTF-8")
+		localeParts := strings.Split(locale, ".")
+		if len(localeParts) > 1 {
+			baseLocale := localeParts[0]
+			if relPath, ok := mapping[baseLocale]; ok {
+				composePath := filepath.Join(baseDir, relPath)
+				if _, err := os.Stat(composePath); err == nil {
+					return composePath
+				}
+			}
+		}
+	}
+
+	// Fallback: try en_US.UTF-8
+	if locale != "en_US.UTF-8" {
+		for _, baseDir := range localeDirs {
+			composePath := filepath.Join(baseDir, "en_US.UTF-8", "Compose")
+			if _, err := os.Stat(composePath); err == nil {
+				return composePath
+			}
+		}
+	}
+
+	return ""
+}
+
+// parseComposeDir parses a compose.dir file and returns a mapping of locale to compose file path.
+func (c *Context) parseComposeDir(path string) map[string]string {
+	result := make(map[string]string)
+
+	file, err := os.Open(path)
+	if err != nil {
+		return result
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Format: "compose_file locale"
+		fields := strings.Fields(line)
+		if len(fields) >= 2 {
+			result[fields[1]] = fields[0]
+		}
+	}
+
+	return result
 }

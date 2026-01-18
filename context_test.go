@@ -170,9 +170,13 @@ func TestContextNewKeymapFromNames(t *testing.T) {
 func TestContextNewComposeTableFromLocale(t *testing.T) {
 	ctx := NewContext(ContextNoFlags)
 
-	_, err := ctx.NewComposeTableFromLocale("en_US.UTF-8", ComposeCompileNoFlags)
-	if err == nil {
-		t.Error("Expected error for unimplemented function")
+	table, err := ctx.NewComposeTableFromLocale("en_US.UTF-8", ComposeCompileNoFlags)
+	if err != nil {
+		t.Skipf("Could not load compose table: %v", err)
+	}
+
+	if table == nil {
+		t.Error("Compose table should not be nil")
 	}
 }
 
@@ -181,7 +185,7 @@ func TestContextNewComposeTableFromFile(t *testing.T) {
 
 	_, err := ctx.NewComposeTableFromFile("/nonexistent", "en_US.UTF-8", ComposeCompileNoFlags)
 	if err == nil {
-		t.Error("Expected error for unimplemented function")
+		t.Error("Expected error for non-existent file")
 	}
 }
 

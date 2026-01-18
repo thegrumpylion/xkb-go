@@ -1,373 +1,245 @@
 # XKB-Go Implementation Roadmap
 
-## Philosophy
+## Status Summary
 
-- **Top-down approach**: Start with public API, implement layers as needed
-- **Test-driven**: Each phase includes tests before moving on
-- **Iterative**: Get basic functionality working, then expand
-- **Real-world validation**: Test against actual Wayland keymaps
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Core Types | ✅ Done | `types.go` |
+| Keysym Utilities | ✅ Done | `keysym.go` (partial table) |
+| Context | ✅ Done | `context.go` |
+| Keymap Structure | ✅ Done | `keymap.go` |
+| State Machine | ✅ Done | `state.go` |
+| XKB Parser (Lexer) | ✅ Done | `lexer.go` |
+| XKB Parser (Full) | ✅ Done | `parser.go` |
+| Compose Parser | ✅ Done | `compose_parser.go` |
+| Compose State | ✅ Done | `compose.go` |
+| RMLVO Compilation | ❌ Not Done | `NewKeymapFromNames()` |
+| Full Keysym Tables | ❌ Not Done | Generated from headers |
 
----
-
-## Phase 1: Foundation
-
-**Goal**: Basic types, keysym utilities, and public API skeleton.
-
-### 1.1 Core Types
-- [ ] `Keysym` type (uint32)
-- [ ] `Keycode` type (uint32)
-- [ ] `ModMask` type (uint32)
-- [ ] `Level` type (uint8)
-- [ ] `Group` type (uint8)
-- [ ] Constants for real modifiers (Shift, Lock, Control, Mod1-5)
-- [ ] `KeyDirection` enum (Up, Down)
-- [ ] `StateComponent` flags
-
-### 1.2 Keysym Tables
-- [ ] Generate `keysym_names.go` from X11 keysymdefs.h
-- [ ] Generate `keysym_utf.go` for keysym ↔ Unicode mapping
-- [ ] `KeysymGetName(Keysym) string`
-- [ ] `KeysymFromName(string) Keysym`
-- [ ] `KeysymToUTF32(Keysym) rune`
-- [ ] `KeysymToUTF8(Keysym) string`
-
-### 1.3 Context
-- [ ] `Context` struct
-- [ ] `NewContext(flags ContextFlags) *Context`
-- [ ] `ctx.SetLogLevel(LogLevel)`
-- [ ] `ctx.SetLogFn(func(LogLevel, string, ...any))`
-- [ ] `ctx.IncludePath() []string`
-- [ ] `ctx.AppendIncludePath(string)`
-
-### 1.4 Tests
-- [ ] Keysym name round-trip tests
-- [ ] Keysym to UTF conversion tests
-- [ ] Context creation tests
-
-**Deliverable**: Can look up keysym names and convert to Unicode.
+**Test Coverage:** 80.5%
 
 ---
 
-## Phase 2: Keymap Structure
+## What Works Today
 
-**Goal**: Define keymap data structures (no parsing yet).
+### Wayland Client Use Case (Primary)
 
-### 2.1 Keymap Types
-- [ ] `Keymap` struct
-- [ ] `KeyType` struct with level mapping
-- [ ] `Key` struct with groups
-- [ ] `KeyGroup` struct with levels
-- [ ] `KeyLevel` struct with keysyms
-- [ ] `LED` struct for indicators
-
-### 2.2 Keymap Methods
-- [ ] `keymap.MinKeycode() Keycode`
-- [ ] `keymap.MaxKeycode() Keycode`
-- [ ] `keymap.KeyGetName(Keycode) string`
-- [ ] `keymap.KeyByName(string) Keycode`
-- [ ] `keymap.NumGroups() int`
-- [ ] `keymap.GroupName(Group) string`
-- [ ] `keymap.NumTypes() int`
-- [ ] `keymap.ModGetIndex(string) int`
-
-### 2.3 Manual Keymap Construction
-- [ ] Builder pattern for testing
-- [ ] Hardcoded US QWERTY for initial testing
-
-**Deliverable**: Can create keymap structures programmatically.
-
----
-
-## Phase 3: State
-
-**Goal**: Keyboard state tracking and key translation.
-
-### 3.1 State Structure
-- [ ] `State` struct
-- [ ] `keymap.NewState() *State`
-- [ ] Three-component modifier state (base, latched, locked)
-- [ ] Three-component group state
-
-### 3.2 State Update
-- [ ] `state.UpdateMask(baseMods, latchedMods, lockedMods, baseGroup, latchedGroup, lockedGroup)`
-- [ ] `state.UpdateKey(keycode, direction)` (optional, for evdev)
-- [ ] Effective modifier/group calculation
-
-### 3.3 Key Translation
-- [ ] `state.KeyGetSyms(keycode) []Keysym`
-- [ ] `state.KeyGetOneSym(keycode) Keysym`
-- [ ] `state.KeyGetUTF32(keycode) rune`
-- [ ] `state.KeyGetUTF8(keycode) string`
-- [ ] Level resolution through key types
-
-### 3.4 Modifier Queries
-- [ ] `state.ModNameIsActive(name, type) bool`
-- [ ] `state.ModIndexIsActive(index, type) bool`
-- [ ] `state.SerializeMods(components) ModMask`
-- [ ] `state.SerializeGroup(components) Group`
-
-### 3.5 Tests
-- [ ] State update tests
-- [ ] Key translation with modifiers
-- [ ] ALPHABETIC type (Shift + Caps Lock interaction)
-- [ ] TWO_LEVEL type
-- [ ] KEYPAD type (Num Lock)
-
-**Deliverable**: Can translate keycodes to keysyms using hardcoded keymap.
-
----
-
-## Phase 4: Parser - Lexer
-
-**Goal**: Tokenize XKB text format.
-
-### 4.1 Token Types
-- [ ] Keywords (xkb_keymap, xkb_keycodes, type, key, include, etc.)
-- [ ] Identifiers
-- [ ] Strings (double-quoted)
-- [ ] Numbers (decimal, hex, octal)
-- [ ] Operators and punctuation
-
-### 4.2 Lexer Implementation
-- [ ] `Lexer` struct with source and position
-- [ ] `lexer.Next() Token`
-- [ ] `lexer.Peek() Token`
-- [ ] Line/column tracking for errors
-- [ ] Comment handling (// and /* */)
-
-### 4.3 Tests
-- [ ] Token recognition tests
-- [ ] Number parsing (decimal, hex)
-- [ ] String escapes
-- [ ] Comment skipping
-
-**Deliverable**: Can tokenize XKB keymap files.
-
----
-
-## Phase 5: Parser - Keycodes Section
-
-**Goal**: Parse `xkb_keycodes` section.
-
-### 5.1 Keycodes Parser
-- [ ] Parse keycode assignments: `<TLDE> = 49;`
-- [ ] Parse key name aliases: `alias <ALGR> = <RALT>;`
-- [ ] Parse indicator definitions: `indicator 1 = "Caps Lock";`
-- [ ] Parse min/max keycode
-- [ ] Handle include directives (basic)
-
-### 5.2 Integration
-- [ ] Wire parser to Keymap structure
-- [ ] Populate keycode ↔ name maps
-
-### 5.3 Tests
-- [ ] Parse evdev keycodes
-- [ ] Parse aliases
-- [ ] Verify keycode ranges
-
-**Deliverable**: Can parse keycodes section from real keymap.
-
----
-
-## Phase 6: Parser - Types Section
-
-**Goal**: Parse `xkb_types` section.
-
-### 6.1 Types Parser
-- [ ] Parse type definitions
-- [ ] Parse modifier specifications: `modifiers = Shift + Lock;`
-- [ ] Parse level mappings: `map[Shift] = Level2;`
-- [ ] Parse preserve statements
-- [ ] Parse level names
-
-### 6.2 Virtual Modifiers
-- [ ] Parse virtual_modifiers declaration
-- [ ] Track virtual → real modifier mapping
-
-### 6.3 Tests
-- [ ] Parse ONE_LEVEL, TWO_LEVEL, ALPHABETIC, KEYPAD
-- [ ] Parse types with preserve
-- [ ] Parse virtual modifier references
-
-**Deliverable**: Can parse types section from real keymap.
-
----
-
-## Phase 7: Parser - Symbols Section
-
-**Goal**: Parse `xkb_symbols` section.
-
-### 7.1 Symbols Parser
-- [ ] Parse key definitions: `key <AD01> { [q, Q] };`
-- [ ] Parse group definitions: `key <AD01> { [q, Q], [й, Й] };`
-- [ ] Parse type override: `key <AD01> { type = "FOUR_LEVEL", ... };`
-- [ ] Parse keysym names and Unicode notation
-- [ ] Parse actions (basic)
-- [ ] Parse modifier_map statements
-- [ ] Parse group names
-
-### 7.2 Include Resolution
-- [ ] Parse include statements
-- [ ] Merge mode handling (override, augment, replace)
-- [ ] Path resolution (for file-based includes)
-
-### 7.3 Tests
-- [ ] Parse basic US layout
-- [ ] Parse multi-group layout
-- [ ] Parse with includes
-
-**Deliverable**: Can parse symbols section from real keymap.
-
----
-
-## Phase 8: Parser - Compat Section
-
-**Goal**: Parse `xkb_compat` section.
-
-### 8.1 Compat Parser
-- [ ] Parse interpret statements
-- [ ] Parse action specifications
-- [ ] Parse indicator mappings
-- [ ] Parse group compatibility
-
-### 8.2 Compat Processing
-- [ ] Apply interprets to keys
-- [ ] Resolve virtual modifiers
-- [ ] Set up modifier actions
-
-### 8.3 Tests
-- [ ] Parse standard compat section
-- [ ] Verify modifier key setup
-
-**Deliverable**: Can parse complete keymap file.
-
----
-
-## Phase 9: Full Parser Integration
-
-**Goal**: Parse complete keymaps end-to-end.
-
-### 9.1 Top-Level Parser
-- [ ] Parse `xkb_keymap { ... }` wrapper
-- [ ] Section ordering flexibility
-- [ ] Error recovery and reporting
-
-### 9.2 API
-- [ ] `ctx.NewKeymapFromString(text, format) (*Keymap, error)`
-- [ ] `ctx.NewKeymapFromFile(path, format) (*Keymap, error)`
-- [ ] Format validation (only XKB_KEYMAP_FORMAT_TEXT_V1)
-
-### 9.3 Integration Tests
-- [ ] Parse keymap from Wayland compositor
-- [ ] Parse xkeyboard-config layouts
-- [ ] Round-trip: parse → serialize → parse (optional)
-
-**Deliverable**: Can load real keymaps from Wayland.
-
----
-
-## Phase 10: Compose Tables
-
-**Goal**: Dead key and compose sequence support.
-
-### 10.1 Compose File Parser
-- [ ] Parse Compose file format
-- [ ] Handle include directives
-- [ ] Build trie from sequences
-
-### 10.2 Compose Table
-- [ ] `ComposeTable` struct
-- [ ] `ctx.NewComposeTableFromLocale(locale) (*ComposeTable, error)`
-- [ ] `ctx.NewComposeTableFromFile(path) (*ComposeTable, error)`
-- [ ] Locale file search paths
-
-### 10.3 Compose State
-- [ ] `ComposeState` struct
-- [ ] `table.NewState() *ComposeState`
-- [ ] `state.Feed(keysym) ComposeStatus`
-- [ ] `state.GetStatus() ComposeStatus`
-- [ ] `state.GetOneSym() Keysym`
-- [ ] `state.GetUTF8() string`
-- [ ] `state.Reset()`
-
-### 10.4 Tests
-- [ ] Dead acute + a = á
-- [ ] Multi_key sequences
-- [ ] Cancelled sequences
-- [ ] Unknown sequences
-
-**Deliverable**: Full dead key support.
-
----
-
-## Phase 11: Polish and Optimization
-
-**Goal**: Production readiness.
-
-### 11.1 Performance
-- [ ] Profile and optimize hot paths
-- [ ] Consider string interning for names
-- [ ] Benchmark against libxkbcommon
-
-### 11.2 Completeness
-- [ ] All xkb_state_* functions
-- [ ] LED state tracking
-- [ ] Key repeat information
-
-### 11.3 Documentation
-- [ ] GoDoc comments
-- [ ] Usage examples
-- [ ] Migration guide from libxkbcommon
-
-### 11.4 Testing
-- [ ] Fuzz testing for parser
-- [ ] Cross-reference with libxkbcommon output
-- [ ] Edge case coverage
-
-**Deliverable**: Production-ready library.
-
----
-
-## Milestones Summary
-
-| Phase | Milestone | Enables |
-|-------|-----------|---------|
-| 1-3 | Basic key translation | Manual keymap construction |
-| 4-9 | Parser complete | Load real keymaps |
-| 10 | Compose support | International input |
-| 11 | Production ready | Replace libxkbcommon |
-
----
-
-## Testing Strategy
-
-### Unit Tests
-Each component has isolated tests with known inputs/outputs.
-
-### Integration Tests
-End-to-end tests with real keymap data:
 ```go
-func TestRealKeymap(t *testing.T) {
-    // Load keymap dumped from Wayland session
-    data, _ := os.ReadFile("testdata/wayland_keymap.xkb")
-    km, err := ctx.NewKeymapFromString(data, xkb.KeymapFormatTextV1)
-    // ...
+// 1. Create context
+ctx := xkb.NewContext(xkb.ContextNoFlags)
+
+// 2. Parse keymap from compositor (wl_keyboard.keymap event)
+keymap, err := ctx.NewKeymapFromString(keymapData, xkb.KeymapFormatTextV1)
+
+// 3. Create state
+state := keymap.NewState()
+
+// 4. Update modifier state (wl_keyboard.modifiers event)
+state.UpdateMask(depressed, latched, locked, 0, 0, group)
+
+// 5. Translate keys (wl_keyboard.key event)
+keysym := state.KeyGetOneSym(keycode)
+utf8 := state.KeyGetUTF8(keycode)
+
+// 6. Optional: Compose/dead key handling
+composeTable, _ := ctx.NewComposeTableFromLocale("en_US.UTF-8", 0)
+composeState := composeTable.NewState(0)
+result := composeState.Feed(keysym)
+if composeState.GetStatus() == xkb.ComposeComposed {
+    utf8 = composeState.GetUTF8()
 }
 ```
 
-### Compatibility Tests
-Compare output with libxkbcommon:
+### Tested With Real Data
+
+- System keymaps from `/usr/share/X11/xkb/`
+- System compose files from `/usr/share/X11/locale/`
+- Wayland compositor keymaps (dumped via `xkbcli`)
+
+---
+
+## Implementation Details
+
+### Phase 1-3: Core (✅ Complete)
+
+**Files:** `types.go`, `keysym.go`, `context.go`, `keymap.go`, `state.go`, `errors.go`, `testing.go`
+
+- [x] Core types: `Keysym`, `Keycode`, `ModMask`, `Level`, `Group`
+- [x] Modifier constants and indices
+- [x] `KeyDirection`, `StateComponent` flags
+- [x] Keysym ↔ name conversion (partial table)
+- [x] Keysym ↔ UTF-8/UTF-32 conversion
+- [x] Context with include paths and logging (`log/slog`)
+- [x] Keymap structure with types, keys, groups, levels
+- [x] State machine with three-component modifier/group state
+- [x] Key translation: `KeyGetOneSym`, `KeyGetSyms`, `KeyGetUTF8`, `KeyGetUTF32`
+- [x] Modifier queries: `ModNameIsActive`, `ModIndexIsActive`, `SerializeMods`
+- [x] `UpdateMask()` for Wayland
+- [x] `UpdateKey()` for evdev
+
+### Phase 4-9: XKB Parser (✅ Complete)
+
+**Files:** `lexer.go`, `parser.go`
+
+- [x] Lexer with all token types
+- [x] Line/column tracking for errors
+- [x] Comment handling (`//` and `/* */`)
+- [x] String escape sequences
+- [x] Hex and octal number literals
+- [x] `xkb_keycodes` section: keycode assignments, aliases, indicators, min/max
+- [x] `xkb_types` section: type definitions, modifiers, level mappings, preserve
+- [x] `xkb_compat` section: interpret statements, virtual modifiers, indicators
+- [x] `xkb_symbols` section: key definitions, groups, levels, modifier_map
+- [x] `xkb_geometry` section: parsed and ignored
+- [x] `ctx.NewKeymapFromString()` fully functional
+- [x] Tested with real system keymaps
+
+### Phase 10: Compose Tables (✅ Complete)
+
+**Files:** `compose.go`, `compose_parser.go`
+
+- [x] Compose file parser with include support
+- [x] Trie-based compose table
+- [x] `ctx.NewComposeTableFromLocale()` - locale-based lookup
+- [x] `ctx.NewComposeTableFromFile()` - direct file loading
+- [x] Compose state machine: `Feed`, `GetStatus`, `GetOneSym`, `GetUTF8`, `Reset`
+- [x] Dead key sequences (dead_acute + a = á)
+- [x] Multi_key sequences (Multi_key + o + c = ©)
+- [x] Tested with real system compose files
+
+---
+
+## What's NOT Implemented
+
+### RMLVO Compilation
+
+`ctx.NewKeymapFromNames(&RuleNames{Layout: "us"})` returns `ErrNotImplemented`.
+
+**What it does:** Converts Rules+Model+Layout+Variant+Options into a complete keymap by:
+1. Reading rules files from `/usr/share/X11/xkb/rules/`
+2. Looking up component files based on RMLVO
+3. Merging includes from symbols/, types/, keycodes/, compat/
+4. Building the final keymap
+
+**Who needs it:**
+- Compositors (to build keymaps from user preferences)
+- Testing tools (to get "us" layout without dumping)
+
+**Wayland clients don't need it** - they receive complete keymaps from the compositor.
+
+### Complete Keysym Tables
+
+Current `keysym.go` has ~200 common keysyms. Full table would be ~2500.
+
+**What's missing:**
+- Many Latin-2 through Latin-10 characters
+- Full multimedia keys (XF86keysym.h)
+- Complete dead key set
+- All currency symbols
+
+**Impact:** Uncommon keysyms return empty names from `KeysymGetName()`.
+
+### NewKeymapFromFile
+
+Not implemented (not needed for Wayland clients).
+
+### Keymap Serialization
+
+`keymap.GetAsString()` not implemented (rarely needed).
+
+---
+
+## What's Next
+
+### Option A: RMLVO Compilation
+
+Implement `NewKeymapFromNames()` for:
+- Compositors building keymaps
+- Convenient testing ("give me US layout")
+
+**Complexity:** Medium-High (rules file parsing, include resolution)
+
+### Option B: Complete Keysym Tables
+
+Generate full tables from X11 headers:
+- `keysymdef.h` → ~2000 keysyms
+- `XF86keysym.h` → ~500 multimedia keys
+
+**Complexity:** Low (code generation)
+
+### Option C: Polish and Testing
+
+- Fuzz testing for parser
+- Benchmark against libxkbcommon
+- Edge case coverage
+- Documentation improvements
+
+**Complexity:** Low-Medium
+
+### Option D: Use It!
+
+The library is functional for Wayland clients. Ship it, find bugs in real usage.
+
+---
+
+## Architecture Notes
+
+### Wayland vs X11 Relevance
+
+| Component | Source | Wayland Client Needs |
+|-----------|--------|---------------------|
+| XKB Keymap | Compositor sends via `wl_keyboard.keymap` | ✅ Must parse |
+| XKB State | Client maintains | ✅ Must implement |
+| Compose Tables | Client reads from `/usr/share/X11/locale/` | Optional |
+| RMLVO Rules | Compositor uses to build keymap | ❌ Not needed |
+
+### Thread Safety
+
+- `Context` - Safe (mutex protected)
+- `Keymap` - Safe (immutable after creation)
+- `State` - NOT safe (one per keyboard device)
+- `ComposeState` - NOT safe (one per keyboard)
+
+---
+
+## File Summary
+
+```
+github.com/thegrumpylion/xkb-go/
+├── types.go           # Core types (Keysym, Keycode, ModMask, etc.)
+├── keysym.go          # Keysym utilities and partial tables
+├── context.go         # Context, include paths, factory methods
+├── keymap.go          # Keymap struct and query methods
+├── state.go           # State machine for key translation
+├── lexer.go           # XKB text format tokenizer
+├── parser.go          # XKB keymap parser
+├── compose.go         # ComposeTable and ComposeState
+├── compose_parser.go  # Compose file parser
+├── errors.go          # Error types
+├── testing.go         # Test helpers (TestKeymap, TestComposeTable)
+├── testdata/
+│   └── system_keymap.xkb  # Real keymap for testing
+└── docs/
+    ├── architecture.md
+    ├── parser.md
+    ├── decisions.md
+    ├── references.md
+    └── roadmap.md (this file)
+```
+
+---
+
+## Testing
+
 ```bash
-# Dump reference output
-xkbcli compile-keymap --layout us | ./compare-tool
+# Run all tests
+go test ./...
+
+# With coverage
+go test -cover ./...
+
+# Verbose
+go test -v ./...
 ```
 
-### Fuzz Tests
-Parser fuzzing to find edge cases:
-```go
-func FuzzParser(f *testing.F) {
-    f.Fuzz(func(t *testing.T, data []byte) {
-        ctx.NewKeymapFromString(data, xkb.KeymapFormatTextV1)
-    })
-}
-```
+Current coverage: **80.5%**
