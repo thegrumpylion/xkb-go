@@ -10,7 +10,7 @@ import (
 // BenchmarkLexer benchmarks the lexer performance
 func BenchmarkLexer(b *testing.B) {
 	// Load test data
-	data, err := os.ReadFile("testdata/system_keymap.xkb")
+	data, err := os.ReadFile("testdata/us.xkb")
 	if err != nil {
 		b.Skip("No system keymap available")
 	}
@@ -29,7 +29,7 @@ func BenchmarkLexer(b *testing.B) {
 
 // BenchmarkLexerTokenize benchmarks the Tokenize method
 func BenchmarkLexerTokenize(b *testing.B) {
-	data, err := os.ReadFile("testdata/system_keymap.xkb")
+	data, err := os.ReadFile("testdata/us.xkb")
 	if err != nil {
 		b.Skip("No system keymap available")
 	}
@@ -43,7 +43,7 @@ func BenchmarkLexerTokenize(b *testing.B) {
 
 // BenchmarkParser benchmarks the parser performance
 func BenchmarkParser(b *testing.B) {
-	data, err := os.ReadFile("testdata/system_keymap.xkb")
+	data, err := os.ReadFile("testdata/us.xkb")
 	if err != nil {
 		b.Skip("No system keymap available")
 	}
@@ -57,7 +57,7 @@ func BenchmarkParser(b *testing.B) {
 
 // BenchmarkNewKeymapFromString benchmarks keymap creation via Context
 func BenchmarkNewKeymapFromString(b *testing.B) {
-	data, err := os.ReadFile("testdata/system_keymap.xkb")
+	data, err := os.ReadFile("testdata/us.xkb")
 	if err != nil {
 		b.Skip("No system keymap available")
 	}

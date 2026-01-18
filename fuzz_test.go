@@ -29,7 +29,7 @@ func FuzzLexer(f *testing.F) {
 	}
 
 	// Add system keymap as seed if available
-	if data, err := os.ReadFile("testdata/system_keymap.xkb"); err == nil {
+	if data, err := os.ReadFile("testdata/us.xkb"); err == nil {
 		f.Add(data)
 	}
 
@@ -114,7 +114,7 @@ func FuzzParser(f *testing.F) {
 	}
 
 	// Add system keymap as seed if available
-	if data, err := os.ReadFile("testdata/system_keymap.xkb"); err == nil {
+	if data, err := os.ReadFile("testdata/us.xkb"); err == nil {
 		f.Add(data)
 	}
 
@@ -142,7 +142,7 @@ func FuzzKeymapFromString(f *testing.F) {
 		f.Add([]byte(seed))
 	}
 
-	if data, err := os.ReadFile("testdata/system_keymap.xkb"); err == nil {
+	if data, err := os.ReadFile("testdata/us.xkb"); err == nil {
 		f.Add(data)
 	}
 

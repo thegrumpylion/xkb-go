@@ -890,7 +890,7 @@ func TestParserIntegration(t *testing.T) {
 
 // TestParserRealKeymap tests parsing a real system keymap
 func TestParserRealKeymap(t *testing.T) {
-	data, err := os.ReadFile("testdata/system_keymap.xkb")
+	data, err := os.ReadFile("testdata/us.xkb")
 	if err != nil {
 		t.Skipf("Skipping real keymap test: %v", err)
 	}

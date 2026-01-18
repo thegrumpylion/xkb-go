@@ -475,17 +475,17 @@ func TestComposeParserOverride(t *testing.T) {
 	}
 }
 
-func TestComposeWithSystemFile(t *testing.T) {
-	// Test loading the real system compose file
-	composePath := "/usr/share/X11/locale/en_US.UTF-8/Compose"
+func TestComposeWithRealFile(t *testing.T) {
+	// Test loading real compose file from testdata (copy of system en_US.UTF-8/Compose)
+	composePath := filepath.Join("testdata", "en_US.UTF-8.Compose")
 	if _, err := os.Stat(composePath); os.IsNotExist(err) {
-		t.Skipf("System compose file not found: %s", composePath)
+		t.Skipf("Compose file not found: %s", composePath)
 	}
 
 	ctx := NewContext(ContextNoFlags)
 	table, err := ctx.NewComposeTableFromFile(composePath, "en_US.UTF-8", ComposeCompileNoFlags)
 	if err != nil {
-		t.Fatalf("Failed to load system compose file: %v", err)
+		t.Fatalf("Failed to load compose file: %v", err)
 	}
 
 	if table == nil {
@@ -523,7 +523,7 @@ func TestComposeWithSystemFile(t *testing.T) {
 		}
 	}
 
-	t.Logf("Successfully loaded and tested system compose file")
+	t.Logf("Successfully loaded and tested real compose file")
 }
 
 func TestNewComposeTableFromLocale(t *testing.T) {
